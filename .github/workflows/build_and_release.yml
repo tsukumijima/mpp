@@ -9,6 +9,8 @@ on:
 jobs:
   build_and_release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v2
