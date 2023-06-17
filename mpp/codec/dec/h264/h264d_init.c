@@ -440,7 +440,7 @@ static MPP_RET dpb_mark_malloc(H264dVideoCtx_t *p_Vid, H264_StorePic_t *dec_pic)
                      * field mode can not use FBC, but VOP only support fbc fmt for 10bit source.
                      * Generally, there is no 10bit field source.
                      */
-                    if (!p_Vid->frame_mbs_only_flag)
+                    if (!p_Vid->frame_mbs_only_flag && p_Vid->bit_depth_luma < 10)
                         break;
 
                     /*
@@ -1936,7 +1936,7 @@ static MPP_RET check_refer_dpb_buf_slots(H264_SLICE_t *currSlice)
         }
     }
     //!< dpb info
-    if (rkv_h264d_parse_debug & H264D_DBG_DPB_INFO) {
+    if (h264d_debug & H264D_DBG_DPB_INFO) {
         H264D_DBG(H264D_DBG_DPB_INFO, "[DPB_INFO] cur_slot_idx=%d", p_Dec->in_task->output);
         for (i = 0; i < MAX_DPB_SIZE; i++) {
             slot_idx = p_Dec->in_task->refer[i];
@@ -1950,7 +1950,7 @@ static MPP_RET check_refer_dpb_buf_slots(H264_SLICE_t *currSlice)
         p_mark = &p_Dec->dpb_mark[i];
         if (p_mark->out_flag && (p_mark->slot_idx >= 0)) {
             dpb_used++;
-            if (rkv_h264d_parse_debug & H264D_DBG_DPB_INFO) {
+            if (h264d_debug & H264D_DBG_DPB_INFO) {
                 RK_S32 fd = 0;
                 MppFrame mframe = NULL;
                 MppBuffer mbuffer = NULL;

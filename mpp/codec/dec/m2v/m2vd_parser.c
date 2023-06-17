@@ -1274,6 +1274,17 @@ static MPP_RET m2vd_alloc_frame(M2VDParserContext *ctx)
     } else {
         if (ctx->frame_cur->slot_index >= 0)
             mpp_buf_slot_set_flag(ctx->frame_slots, ctx->frame_cur->slot_index, SLOT_HAL_OUTPUT);
+        else {
+            /*
+             * frame alloc failed cause by stream error, such as:
+             * receive top field while top_field_first = 0,
+             * or bottom filed while top_field_first = 1;
+             * mark resetFlag to wait for another I frame
+             */
+            mpp_log("frame alloc failed, need reset\n");
+            ctx->resetFlag = 1;
+            return MPP_NOK;
+        }
     }
 
     return MPP_OK;
@@ -1446,6 +1457,11 @@ MPP_RET m2vd_parser_parse(void *ctx, HalDecTask *in_task)
                 mpp_log("[m2v]: !mHeaderDecFlag");
             goto __FAILED;
         }
+    }
+
+    if (p->seq_head.decode_width > 1920 || p->seq_head.decode_height > 1088) {
+        mpp_err("Warning: unsupport larger than 1920x1088\n");
+        goto __FAILED;
     }
 
     p->mb_width = (p->seq_head.decode_width + 15) >> 4;

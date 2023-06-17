@@ -260,10 +260,7 @@ static RK_S32 get_afbc_min_size(RK_S32 width, RK_S32 height, RK_S32 bpp)
     RK_S32 n_blocks, hdr_alignment, size;
 
     /* AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 and !AFBC_FORMAT_MOD_TILED */
-    if (*compat_ext_fbc_hdr_256_odd)
-        width = MPP_ALIGN(width, 256) | 256;
-    else
-        width = MPP_ALIGN(width, 16);
+    width = MPP_ALIGN(width, 16);
     height = MPP_ALIGN(height, 16);
     hdr_alignment = AFBC_HDR_ALIGN;
 
@@ -298,7 +295,10 @@ static void generate_info_set(MppBufSlotsImpl *impl, MppFrame frame, RK_U32 forc
 
     if (MPP_FRAME_FMT_IS_FBC(fmt)) {
         /*fbc stride default 64 align*/
-        hal_hor_stride = MPP_ALIGN(width, 64) * depth >> 3;
+        if (*compat_ext_fbc_hdr_256_odd)
+            hal_hor_stride = (MPP_ALIGN(width, 256) | 256) * depth >> 3;
+        else
+            hal_hor_stride = MPP_ALIGN(width, 64) * depth >> 3;
     }
 
     switch (fmt & MPP_FRAME_FMT_MASK) {
@@ -760,7 +760,8 @@ MPP_RET mpp_buf_slot_setup(MppBufSlots slots, RK_S32 count)
     } else {
         // record the slot count for info changed ready config
         if (count > impl->buf_count) {
-            mpp_realloc(impl->slots, MppBufSlotEntry, count);
+            impl->slots = mpp_realloc(impl->slots, MppBufSlotEntry, count);
+            mpp_assert(impl->slots);
             init_slot_entry(impl, impl->buf_count, (count - impl->buf_count));
         }
         impl->new_count = count;
@@ -798,7 +799,8 @@ MPP_RET mpp_buf_slot_ready(MppBufSlots slots)
 
     // ready mean the info_set will be copy to info as the new configuration
     if (impl->buf_count != impl->new_count) {
-        mpp_realloc(impl->slots, MppBufSlotEntry, impl->new_count);
+        impl->slots = mpp_realloc(impl->slots, MppBufSlotEntry, impl->new_count);
+        mpp_assert(impl->slots);
         init_slot_entry(impl, 0, impl->new_count);
     }
     impl->buf_count = impl->new_count;

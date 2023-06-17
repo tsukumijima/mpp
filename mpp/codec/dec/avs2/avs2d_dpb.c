@@ -37,7 +37,6 @@
  * size is used for all bitstream. And this function is commented to silence
  * compiler's unused warnning.
  */
-/*
 static RK_U32 dpb_get_size(Avs2dCtx_t *p_dec)
 {
     RK_U32 mini_size = 8;
@@ -92,14 +91,13 @@ static RK_U32 dpb_get_size(Avs2dCtx_t *p_dec)
         break;
     }
 
-    if (dpb_size < (vsh->num_of_rps + 1)) {
-        dpb_size = vsh->num_of_rps + 1;
+    if (dpb_size < (RK_U32)(vsh->num_of_rps + 1)) {
+        dpb_size = (RK_U32)(vsh->num_of_rps + 1);
     }
     dpb_size = MPP_MIN(dpb_size, AVS2_MAX_DPB_SIZE);
 
     return dpb_size;
 }
-*/
 
 static Avs2dFrame_t *new_frame()
 {
@@ -123,7 +121,6 @@ static void dpb_init_management(Avs2dFrameMgr_t *mgr)
     mgr->prev_doi     = NO_VAL;
     mgr->output_poi   = NO_VAL;
     mgr->tr_wrap_cnt  = 0;
-    mgr->poi_interval = 1;
 
     mgr->scene_ref = NULL;
     mgr->cur_frm   = NULL;
@@ -139,9 +136,9 @@ MPP_RET avs2d_dpb_create(Avs2dCtx_t *p_dec)
     Avs2dFrameMgr_t *mgr = &p_dec->frm_mgr;
 
     AVS2D_PARSE_TRACE("In.");
-    // mgr->dpb_size = dpb_get_size(p_dec);
+    mgr->dpb_specific_size = dpb_get_size(p_dec);
     mgr->dpb_size = 15;
-    avs2d_dbg_dpb("create dpb, size %d\n", mgr->dpb_size);
+    avs2d_dbg_dpb("create dpb, size %d, specific_size %d\n", mgr->dpb_size, mgr->dpb_specific_size);
     mgr->dpb = mpp_calloc(Avs2dFrame_t*, mgr->dpb_size);
     for (i = 0; i < mgr->dpb_size; i++) {
         mgr->dpb[i] = new_frame();
@@ -208,11 +205,24 @@ static void compute_frame_order_index(Avs2dCtx_t *p_dec)
     Avs2dSeqHeader_t *vsh = &p_dec->vsh;
     Avs2dPicHeader_t *ph  = &p_dec->ph;
     Avs2dFrameMgr_t *mgr  = &p_dec->frm_mgr;
+    RK_U32 i = 0;
+    Avs2dFrame_t *p;
 
     //!< DOI should be a periodically-repeated value from 0 to 255
     if (mgr->output_poi != -1 &&
         ph->doi != (mgr->prev_doi + 1) % AVS2_DOI_CYCLE) {
         AVS2D_DBG(AVS2D_DBG_WARNNING, "discontinuous DOI (prev: %d --> curr: %d).", mgr->prev_doi, ph->doi);
+        for (i = 0; i < mgr->dpb_size; i++) {
+            p = mgr->dpb[i];
+            if (p->slot_idx == NO_VAL) {
+                continue;
+            }
+
+            if (MPP_ABS(ph->doi - (p->doi % AVS2_DOI_CYCLE)) > 1) {
+                p->refered_by_others = 0;
+                p->refered_by_scene = 0;
+            }
+        }
     }
 
     //!< update DOI
@@ -304,7 +314,8 @@ static MPP_RET output_display_frame(Avs2dCtx_t *p_dec, Avs2dFrame_t *p)
         p_dec->frm_mgr.output_poi = p->poi;
         mpp_buf_slot_set_flag(p_dec->frame_slots, p->slot_idx, SLOT_QUEUE_USE);
         mpp_buf_slot_enqueue(p_dec->frame_slots, p->slot_idx, QUEUE_DISPLAY);
-        avs2d_dbg_dpb("output display frame poi %d slot_idx %d", p->poi, p->slot_idx);
+        avs2d_dbg_dpb("output display frame poi %d slot_idx %d, pts %lld", p->poi, p->slot_idx,
+                      mpp_frame_get_pts(p->frame));
     }
 
     avs2d_dbg_dpb("Out. ret = %d", ret);
@@ -407,6 +418,11 @@ MPP_RET dpb_remove_unused_frame(Avs2dCtx_t *p_dec)
             continue;
         }
 
+        if ((MPP_ABS(p->poi - p_dec->ph.poi) >= AVS2_MAX_POC_DISTANCE)) {
+            p->refered_by_others = 0;
+            p->refered_by_scene = 0;
+        }
+
         if ((p->is_output || p->invisible) && !is_refered(p)) {
             FUN_CHECK(ret = dpb_remove_frame(p_dec, p));
         }
@@ -502,6 +518,11 @@ static Avs2dFrame_t *dpb_alloc_frame(Avs2dCtx_t *p_dec, HalDecTask *task)
     if (p_dec->is_hdr)
         mpp_frame_set_fmt(mframe, mpp_frame_get_fmt(mframe) | MPP_FRAME_HDR);
 
+    if (p_dec->init.cfg->base.enable_thumbnail && p_dec->init.hw_info->cap_down_scale)
+        mpp_frame_set_thumbnail_en(mframe, 1);
+    else
+        mpp_frame_set_thumbnail_en(mframe, 0);
+
     mpp_frame_set_width(mframe, vsh->horizontal_size);
     mpp_frame_set_height(mframe, vsh->vertical_size);
     mpp_frame_set_hor_stride(mframe, (MPP_ALIGN(vsh->horizontal_size, ctu_size) * bitdepth + 7) / 8);
@@ -562,11 +583,11 @@ static MPP_RET dpb_output_next_frame(Avs2dCtx_t *p_dec, RK_S32 continuous)
 
     AVS2D_PARSE_TRACE("In.");
     if (get_outputable_smallest_poi(mgr, &poi, &pos)) {
-        avs2d_dbg_dpb("smallest poi %d, pos %d, output_poi %d, poi_interval %d\n",
-                      poi, pos, mgr->output_poi, mgr->poi_interval);
+        avs2d_dbg_dpb("smallest poi %d, pos %d, output_poi %d\n",
+                      poi, pos, mgr->output_poi);
 
-        if ((poi - mgr->output_poi <= mgr->poi_interval) ||
-            (mgr->dpb[pos]->doi + mgr->dpb[pos]->out_delay < p_dec->ph.doi) ||
+        if ((poi - mgr->output_poi <= 1) ||
+            (mgr->dpb[pos]->doi + mgr->dpb[pos]->out_delay < mgr->cur_frm->doi) ||
             !continuous) {
             FUN_CHECK(ret = output_display_frame(p_dec, mgr->dpb[pos]));
             if (!is_refered(mgr->dpb[pos])) {
@@ -578,14 +599,6 @@ static MPP_RET dpb_output_next_frame(Avs2dCtx_t *p_dec, RK_S32 continuous)
     AVS2D_PARSE_TRACE("Out.");
 __FAILED:
     return ret;
-}
-
-static MPP_RET dpb_scan_output_frame(Avs2dCtx_t *p_dec)
-{
-    avs2d_dbg_dpb("In.");
-    dpb_output_next_frame(p_dec, 1);
-    avs2d_dbg_dpb("Out.");
-    return MPP_OK;
 }
 
 static Avs2dFrame_t *find_ref_frame(Avs2dFrameMgr_t *mgr, RK_S32 doi)
@@ -746,10 +759,10 @@ MPP_RET avs2d_dpb_insert(Avs2dCtx_t *p_dec, HalDecTask *task)
 
     AVS2D_PARSE_TRACE("In.");
 
-    //!< output frame from dpb
-    dpb_scan_output_frame(p_dec);
-
     compute_frame_order_index(p_dec);
+
+    //!< output frame from dpb
+    dpb_output_next_frame(p_dec, 1);
 
     //!< remove scene(G/GB) frame(scene dbp has only one G/GB)
     dpb_remove_scene_frame(p_dec);

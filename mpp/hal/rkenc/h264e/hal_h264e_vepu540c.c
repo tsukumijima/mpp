@@ -467,8 +467,6 @@ static MPP_RET setup_vepu540c_prep(HalVepu540cRegSet *regs, MppEncPrepCfg *prep)
     y_stride = (MPP_FRAME_FMT_IS_FBC(fmt)) ? (MPP_ALIGN(prep->width, 16)) :
                (prep->hor_stride) ? (prep->hor_stride) : (prep->width);
 
-    y_stride = y_stride;
-
     c_stride = (hw_fmt == VEPU541_FMT_YUV422SP || hw_fmt == VEPU541_FMT_YUV420SP) ?
                y_stride : y_stride / 2;
 
@@ -764,7 +762,7 @@ static void setup_vepu540c_rdo_pred(HalVepu540cRegSet *regs, H264eSps *sps,
     regs->reg_base.rdo_cfg.atf_e          = 0;
     regs->reg_base.rdo_cfg.atr_e          = 0;
 
-    regs->reg_base.iprd_csts.rdo_mark_mode       = 24;
+    regs->reg_base.iprd_csts.rdo_mark_mode       = 0x100;
 
     hal_h264e_dbg_func("leave\n");
 }

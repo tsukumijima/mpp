@@ -226,6 +226,13 @@ static MPP_RET parser_one_nalu(H264_SLICE_t *currSlice)
     MPP_RET ret = MPP_ERR_UNKNOW;
 
     FUN_CHECK(ret = parser_nalu_header(currSlice));
+
+    if (currSlice->p_Vid->deny_flag &&
+        currSlice->p_Cur->nalu.nalu_type != H264_NALU_TYPE_SPS) {
+        currSlice->p_Dec->nalu_ret = NaluNotSupport;
+        return MPP_OK;
+    }
+
     //!< nalu_parse
     switch (currSlice->p_Cur->nalu.nalu_type) {
     case H264_NALU_TYPE_SLICE:
@@ -240,6 +247,7 @@ static MPP_RET parser_one_nalu(H264_SLICE_t *currSlice)
         H264D_DBG(H264D_DBG_PARSE_NALU, "nalu_type=SPS");
         FUN_CHECK(ret = process_sps(currSlice));
         currSlice->p_Dec->nalu_ret = NALU_SPS;
+        currSlice->p_Vid->deny_flag = 0;
         break;
     case H264_NALU_TYPE_PPS:
         H264D_DBG(H264D_DBG_PARSE_NALU, "nalu_type=PPS");
@@ -367,7 +375,7 @@ static MPP_RET store_cur_nalu(H264dCurCtx_t *p_Cur, H264dCurStream_t *p_strm, H2
         memcpy(p_des + sizeof(g_start_precode), p_strm->nalu_buf, p_strm->nalu_len);
         dxva_ctx->strm_offset += add_size;
     }
-    if (rkv_h264d_parse_debug & H264D_DBG_WRITE_ES_EN) {
+    if (h264d_debug & H264D_DBG_WRITE_ES_EN) {
         H264dInputCtx_t *p_Inp = p_Cur->p_Inp;
         if ((p_strm->nalu_type == H264_NALU_TYPE_SPS)
             || (p_strm->nalu_type == H264_NALU_TYPE_PPS)) {
@@ -463,7 +471,7 @@ static RK_U64 global_flie_size = 0;
 */
 MPP_RET open_stream_file(H264dInputCtx_t *p_Inp, char *path)
 {
-    if (rkv_h264d_parse_debug & H264D_DBG_WRITE_ES_EN) {
+    if (h264d_debug & H264D_DBG_WRITE_ES_EN) {
 
         sprintf(p_Inp->fname[0], "%s/rkv_h264d_file_00.h264", path);
         sprintf(p_Inp->fname[1], "%s/rkv_h264d_file_01.h264", path);
@@ -485,7 +493,7 @@ MPP_RET open_stream_file(H264dInputCtx_t *p_Inp, char *path)
 */
 MPP_RET fwrite_stream_to_file(H264dInputCtx_t *p_Inp, RK_U8 *pdata, RK_U32 len)
 {
-    if (p_Inp->fp && (rkv_h264d_parse_debug & H264D_DBG_WRITE_ES_EN)) {
+    if (p_Inp->fp && (h264d_debug & H264D_DBG_WRITE_ES_EN)) {
         if (p_Inp->fp) {
             fwrite(pdata, sizeof(RK_U8), len, p_Inp->fp);
             fflush(p_Inp->fp);
@@ -515,7 +523,7 @@ MPP_RET fwrite_stream_to_file(H264dInputCtx_t *p_Inp, RK_U8 *pdata, RK_U32 len)
 */
 MPP_RET close_stream_file(H264dInputCtx_t *p_Inp)
 {
-    if (rkv_h264d_parse_debug & H264D_DBG_WRITE_ES_EN) {
+    if (h264d_debug & H264D_DBG_WRITE_ES_EN) {
         if (p_Inp->fp) {
             fflush(p_Inp->fp);
             MPP_FCLOSE(p_Inp->fp);
@@ -922,6 +930,9 @@ MPP_RET parse_loop(H264_DecCtx_t *p_Dec)
                 p_Dec->next_state = SliceSTATE_InitPicture;
             }  else if (p_Dec->nalu_ret == MvcDisAble) {
                 H264D_LOG("xxxxxxxx MVC disable");
+                goto __FAILED;
+            } else if (p_Dec->nalu_ret == NaluNotSupport) {
+                H264D_LOG("NALU not support, abort decoding");
                 goto __FAILED;
             } else {
                 p_Dec->next_state = SliceSTATE_ReadNalu;

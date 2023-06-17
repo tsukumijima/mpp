@@ -190,8 +190,12 @@ MPP_RET mpp_frame_copy(MppFrame dst, MppFrame src)
         return MPP_ERR_UNKNOW;
     }
 
+    MppFrameImpl *p = (MppFrameImpl *)dst;
+    if (p->meta)
+        mpp_meta_put(p->meta);
+
     memcpy(dst, src, sizeof(MppFrameImpl));
-    MppFrameImpl *p = (MppFrameImpl *)src;
+    p = (MppFrameImpl *)src;
     if (p->meta)
         mpp_meta_inc_ref(p->meta);
 
@@ -212,7 +216,7 @@ MPP_RET mpp_frame_info_cmp(MppFrame frame0, MppFrame frame1)
         (f0->height             == f1->height) &&
         (f0->hor_stride         == f1->hor_stride) &&
         (f0->ver_stride         == f1->ver_stride) &&
-        (f0->fmt                == f1->fmt) &&
+        ((f0->fmt & ~MPP_FRAME_HDR_MASK) == (f1->fmt & ~MPP_FRAME_HDR_MASK)) &&
         (f0->buf_size           == f1->buf_size)) {
         return MPP_OK;
     }

@@ -46,14 +46,17 @@ static MPP_RET check_task_wait(MppDecImpl *dec, DecTask *task)
     RK_U32 last_wait = dec->parser_wait_flag;
     RK_U32 curr_wait = task->wait.val;
     RK_U32 wait_chg  = last_wait & (~curr_wait);
+    RK_U32 keep_notify = 0;
 
     do {
         if (dec->reset_flag)
             break;
 
         // NOTE: User control should always be processed
-        if (notify & MPP_DEC_CONTROL)
+        if (notify & MPP_DEC_CONTROL) {
+            keep_notify = notify & (~MPP_DEC_CONTROL);
             break;
+        }
 
         // NOTE: When condition is not fulfilled check nofify flag again
         if (!curr_wait || (curr_wait & notify))
@@ -68,7 +71,7 @@ static MPP_RET check_task_wait(MppDecImpl *dec, DecTask *task)
 
     dec->parser_status_flag = task->status.val;
     dec->parser_wait_flag = task->wait.val;
-    dec->parser_notify_flag = 0;
+    dec->parser_notify_flag = keep_notify;
 
     if (ret) {
         dec->parser_wait_count++;
@@ -604,7 +607,7 @@ static MPP_RET try_proc_dec_task(Mpp *mpp, DecTask *task)
                                   hal_buf_out);
     }
 
-    dec_dbg_detail("detail: %p check output buffer %p\n", hal_buf_out, dec);
+    dec_dbg_detail("detail: %p check output buffer %p\n", dec, hal_buf_out);
 
     // update codec info
     if (!dec->info_updated && dec->dev) {

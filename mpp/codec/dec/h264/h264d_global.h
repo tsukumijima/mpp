@@ -52,36 +52,36 @@
 #define H264D_DBG_FIELD_PAIRED      (0x00020000)
 #define H264D_DBG_DISCONTINUOUS     (0x00040000)
 
-extern RK_U32 rkv_h264d_parse_debug;
+extern RK_U32 h264d_debug;
 
 #define H264D_DBG(level, fmt, ...)\
 do {\
-    if (level & rkv_h264d_parse_debug)\
+    if (level & h264d_debug)\
         { mpp_log(fmt, ## __VA_ARGS__); }\
 } while (0)
 
 
 #define H264D_ERR(fmt, ...)\
 do {\
-    if (H264D_DBG_ERROR & rkv_h264d_parse_debug)\
+    if (H264D_DBG_ERROR & h264d_debug)\
         { mpp_log(fmt, ## __VA_ARGS__); }\
 } while (0)
 
 #define ASSERT(val)\
 do {\
-    if (H264D_DBG_ASSERT & rkv_h264d_parse_debug)\
+    if (H264D_DBG_ASSERT & h264d_debug)\
         { mpp_assert(val); }\
 } while (0)
 
 #define H264D_WARNNING(fmt, ...)\
 do {\
-    if (H264D_DBG_WARNNING & rkv_h264d_parse_debug)\
+    if (H264D_DBG_WARNNING & h264d_debug)\
         { mpp_log(fmt, ## __VA_ARGS__); }\
 } while (0)
 
 #define H264D_LOG(fmt, ...)\
 do {\
-    if (H264D_DBG_LOG & rkv_h264d_parse_debug)\
+    if (H264D_DBG_LOG & h264d_debug)\
         { mpp_log(fmt, ## __VA_ARGS__); }\
 } while (0)
 
@@ -740,7 +740,6 @@ typedef struct h264_sei_t {
         //-- for adding
     } scalable_nesting;
 
-    RK_U32 user_data_DivX_flag;
     // Placeholder; in future more supported types will contribute to more
     //---- follow is used in other parts
     RK_S32 mvc_scalable_nesting_flag;
@@ -891,6 +890,7 @@ typedef struct h264d_input_ctx_t {
     RK_S64 in_pts;
     RK_S64 in_dts;
     RK_U8  has_get_eos;
+    RK_U32 max_buf_size;
     //!< output data
     RK_U8  task_valid;
     RK_U32 task_eos;
@@ -1049,6 +1049,7 @@ typedef struct h264d_video_ctx_t {
     RK_U32     dpb_fast_out;
     RK_U32     dpb_first_fast_played;
     RK_U32     last_ref_frame_num;
+    RK_U32     deny_flag;
 } H264dVideoCtx_t;
 
 typedef struct h264d_mem_t {
