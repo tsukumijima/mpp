@@ -27,6 +27,7 @@
 
 #define MODULE_TAG "h265d_sei"
 
+#include "mpp_bitread.h"
 #include "h265d_parser.h"
 #include "rk_hdr_meta_com.h"
 #include "h2645d_sei.h"
@@ -147,6 +148,7 @@ static RK_S32 mastering_display_colour_volume(HEVCContext *s, BitReadCtx_t *gb)
     RK_S32 i = 0;
     RK_U16 value = 0;
     RK_U32 lum = 0;
+
     for (i = 0; i < 3; i++) {
         READ_BITS(gb, 16, &value);
         s->mastering_display.display_primaries[i][0] = value;
@@ -161,6 +163,18 @@ static RK_S32 mastering_display_colour_volume(HEVCContext *s, BitReadCtx_t *gb)
     s->mastering_display.max_luminance = lum;
     mpp_read_longbits(gb, 32, &lum);
     s->mastering_display.min_luminance = lum;
+
+    h265d_dbg(H265D_DBG_SEI, "dis_prim [%d %d] [%d %d] [%d %d] white point %d %d luminance %d %d\n",
+              s->mastering_display.display_primaries[0][0],
+              s->mastering_display.display_primaries[0][1],
+              s->mastering_display.display_primaries[1][0],
+              s->mastering_display.display_primaries[1][1],
+              s->mastering_display.display_primaries[2][0],
+              s->mastering_display.display_primaries[2][1],
+              s->mastering_display.white_point[0],
+              s->mastering_display.white_point[1],
+              s->mastering_display.max_luminance,
+              s->mastering_display.min_luminance);
 
     return 0;
 
@@ -315,12 +329,10 @@ __BITREAD_ERR:
     return  MPP_ERR_STREAM;
 }
 
-static RK_S32 vivid_display_info(HEVCContext *s, RK_U32 size)
+static RK_S32 vivid_display_info(HEVCContext *s, BitReadCtx_t *gb, RK_U32 size)
 {
-    BitReadCtx_t *gb = &s->HEVClc->gb;
-
     if (gb)
-        mpp_hevc_fill_dynamic_meta(s, gb->buf + mpp_get_bits_count(gb) / 8, size, HDRVIVID);
+        mpp_hevc_fill_dynamic_meta(s, gb->data_, size, HDRVIVID);
     return 0;
 }
 
@@ -331,7 +343,6 @@ static RK_S32 user_data_registered_itu_t_t35(HEVCContext *s, BitReadCtx_t *gb, i
 
     if (size < 3)
         return 0;
-    size -= 3;
 
     READ_BITS(gb, 8, &country_code);
     if (country_code == 0xFF) {
@@ -339,7 +350,6 @@ static RK_S32 user_data_registered_itu_t_t35(HEVCContext *s, BitReadCtx_t *gb, i
             return 0;
 
         SKIP_BITS(gb, 8);
-        size--;
     }
 
     /* usa country_code or china country_code */
@@ -350,13 +360,10 @@ static RK_S32 user_data_registered_itu_t_t35(HEVCContext *s, BitReadCtx_t *gb, i
 
     READ_BITS(gb, 16, &provider_code);
     READ_BITS(gb, 16, &terminal_provide_oriented_code);
-
     h265d_dbg(H265D_DBG_SEI, "country_code=%d provider_code=%d terminal_provider_code %d\n",
               country_code, provider_code, terminal_provide_oriented_code);
-    if (provider_code == 4) {
-        size -= 2;
-        vivid_display_info(s, size);
-    }
+    if (provider_code == 4)
+        vivid_display_info(s, gb, mpp_get_bits_left(gb) >> 3);
 
     return 0;
 
@@ -376,6 +383,26 @@ static RK_S32 decode_nal_sei_alternative_transfer(HEVCContext *s, BitReadCtx_t *
     return 0;
 __BITREAD_ERR:
     return  MPP_ERR_STREAM;
+}
+
+MPP_RET decode_recovery_point(BitReadCtx_t *gb, HEVCContext *s)
+{
+    RK_S32 val = -1;
+
+    READ_SE(gb, &val);
+    if (val > 32767 || val < -32767) {
+        h265d_dbg(H265D_DBG_SEI, "recovery_poc_cnt %d, is out of range");
+        return MPP_ERR_STREAM;
+    }
+
+    memset(&s->recovery, 0, sizeof(RecoveryPoint));
+    s->recovery.valid_flag = 1;
+    s->recovery.recovery_frame_cnt = val;
+
+    h265d_dbg(H265D_DBG_SEI, "Recovery point: poc_cnt %d", s->recovery.recovery_frame_cnt);
+    return MPP_OK;
+__BITREAD_ERR:
+    return MPP_ERR_STREAM;
 }
 
 MPP_RET mpp_hevc_decode_nal_sei(HEVCContext *s)
@@ -406,6 +433,7 @@ MPP_RET mpp_hevc_decode_nal_sei(HEVCContext *s)
 
         memset(&payload_bitctx, 0, sizeof(payload_bitctx));
         mpp_set_bitread_ctx(&payload_bitctx, s->HEVClc->gb.data_, payload_size);
+        mpp_set_bitread_pseudo_code_type(&payload_bitctx, PSEUDO_CODE_H264_H265_SEI);
 
         h265d_dbg(H265D_DBG_SEI, "s->nal_unit_type %d payload_type %d payload_size %d\n", s->nal_unit_type, payload_type, payload_size);
 
@@ -443,6 +471,7 @@ MPP_RET mpp_hevc_decode_nal_sei(HEVCContext *s)
             } else if (payload_type == 6) {
                 h265d_dbg(H265D_DBG_SEI, "recovery point in\n");
                 s->max_ra = INT_MIN;
+                ret = decode_recovery_point(&payload_bitctx, s);
             }  else if (payload_type == 147) {
                 h265d_dbg(H265D_DBG_SEI, "alternative_transfer in\n");
                 ret = decode_nal_sei_alternative_transfer(s, &payload_bitctx);

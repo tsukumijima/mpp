@@ -80,6 +80,8 @@ typedef struct HalH264eVepu580Ctx_t {
     H264ePps                *pps;
     H264eDpb                *dpb;
     H264eFrmInfo            *frms;
+
+    /* async encode TSVC info */
     H264eReorderInfo        *reorder;
     H264eMarkingInfo        *marking;
 
@@ -219,6 +221,8 @@ static MPP_RET hal_h264e_vepu580_deinit(void *hal)
     MPP_FREE(p->amend_sets);
     MPP_FREE(p->prefix_sets);
     MPP_FREE(p->slice_sets);
+    MPP_FREE(p->reorder);
+    MPP_FREE(p->marking);
     MPP_FREE(p->poll_cfgs);
 
     if (p->ext_line_buf_grp) {
@@ -311,8 +315,23 @@ static MPP_RET hal_h264e_vepu580_init(void *hal, MppEncHalCfg *cfg)
             mpp_err_f("init amend data failed\n");
             goto DONE;
         }
+
         p->slice_sets = mpp_malloc(H264eSlice, p->task_cnt);
         if (NULL == p->slice_sets) {
+            ret = MPP_ERR_MALLOC;
+            mpp_err_f("init amend data failed\n");
+            goto DONE;
+        }
+
+        p->reorder = mpp_malloc(H264eReorderInfo, 1);
+        if (NULL == p->reorder) {
+            ret = MPP_ERR_MALLOC;
+            mpp_err_f("init amend data failed\n");
+            goto DONE;
+        }
+
+        p->marking = mpp_malloc(H264eMarkingInfo, 1);
+        if (NULL == p->marking) {
             ret = MPP_ERR_MALLOC;
             mpp_err_f("init amend data failed\n");
             goto DONE;
@@ -526,6 +545,7 @@ static MPP_RET hal_h264e_vepu580_get_task(void *hal, HalEncTask *task)
     HalH264eVepu580Ctx *ctx = (HalH264eVepu580Ctx *)hal;
     MppEncCfgSet *cfg_set = ctx->cfg;
     MppEncRefCfgImpl *ref = (MppEncRefCfgImpl *)cfg_set->ref_cfg;
+    MppEncH264HwCfg *hw_cfg = &cfg_set->codec.h264.hw_cfg;
     RK_U32 updated = update_vepu580_syntax(ctx, &task->syntax);
     EncFrmStatus *frm_status = &task->rc_task->frm;
     H264eFrmInfo *frms = ctx->frms;
@@ -559,15 +579,30 @@ static MPP_RET hal_h264e_vepu580_get_task(void *hal, HalEncTask *task)
     ctx->amend = &ctx->amend_sets[ctx->task_idx];
     ctx->osd_cfg.reg_base = &ctx->regs_set->reg_osd;
 
+    /* if not VEPU1/2, update log2_max_frame_num_minus4 in hw_cfg */
+    hw_cfg->hw_log2_max_frame_num_minus4 = ctx->sps->log2_max_frame_num_minus4;
+
     if (ctx->task_cnt > 1 && (ref->lt_cfg_cnt || ref->st_cfg_cnt > 1)) {
+        H264ePrefixNal *prefix = &ctx->prefix_sets[ctx->task_idx];
+        H264eSlice *slice = &ctx->slice_sets[ctx->task_idx];
+
         //store async encode TSVC info
         if (ctx->prefix)
-            memcpy(&ctx->prefix_sets[ctx->task_idx], ctx->prefix, sizeof(H264ePrefixNal));
-        if (ctx->slice)
-            memcpy(&ctx->slice_sets[ctx->task_idx], ctx->slice, sizeof(H264eSlice));
+            memcpy(prefix, ctx->prefix, sizeof(H264ePrefixNal));
+        if (ctx->slice) {
+            memcpy(slice, ctx->slice, sizeof(H264eSlice));
+
+            /*
+             * Generally, reorder and marking are shared by dpb and slice.
+             * However, async encoding TSVC will change reorder and marking in each task.
+             * Therefore, malloc a special space for async encoding TSVC.
+             */
+            ctx->amend->reorder = ctx->reorder;
+            ctx->amend->marking = ctx->marking;
+        }
 
         h264e_vepu_stream_amend_config(ctx->amend, task->packet, ctx->cfg,
-                                       &ctx->slice_sets[ctx->task_idx], &ctx->prefix_sets[ctx->task_idx]);
+                                       slice, prefix);
     } else {
         h264e_vepu_stream_amend_config(ctx->amend, task->packet, ctx->cfg,
                                        ctx->slice, ctx->prefix);
@@ -2359,6 +2394,8 @@ static MPP_RET hal_h264e_vepu580_start(void *hal, HalEncTask *task)
 
 static MPP_RET hal_h264e_vepu580_status_check(HalVepu580RegSet *regs)
 {
+    MPP_RET ret = MPP_OK;
+
     if (regs->reg_ctl.int_sta.lkt_node_done_sta)
         hal_h264e_dbg_detail("lkt_done finish");
 
@@ -2371,22 +2408,32 @@ static MPP_RET hal_h264e_vepu580_status_check(HalVepu580RegSet *regs)
     if (regs->reg_ctl.int_sta.sclr_done_sta)
         hal_h264e_dbg_detail("safe clear finsh");
 
-    if (regs->reg_ctl.int_sta.bsf_oflw_sta)
+    if (regs->reg_ctl.int_sta.bsf_oflw_sta) {
         mpp_err_f("bit stream overflow");
+        ret = MPP_NOK;
+    }
 
-    if (regs->reg_ctl.int_sta.brsp_otsd_sta)
+    if (regs->reg_ctl.int_sta.brsp_otsd_sta) {
         mpp_err_f("bus write full");
+        ret = MPP_NOK;
+    }
 
-    if (regs->reg_ctl.int_sta.wbus_err_sta)
+    if (regs->reg_ctl.int_sta.wbus_err_sta) {
         mpp_err_f("bus write error");
+        ret = MPP_NOK;
+    }
 
-    if (regs->reg_ctl.int_sta.rbus_err_sta)
+    if (regs->reg_ctl.int_sta.rbus_err_sta) {
         mpp_err_f("bus read error");
+        ret = MPP_NOK;
+    }
 
-    if (regs->reg_ctl.int_sta.wdg_sta)
+    if (regs->reg_ctl.int_sta.wdg_sta) {
+        ret = MPP_NOK;
         mpp_err_f("wdg timeout");
+    }
 
-    return MPP_OK;
+    return ret;
 }
 
 static MPP_RET hal_h264e_vepu580_wait(void *hal, HalEncTask *task)
@@ -2439,16 +2486,18 @@ static MPP_RET hal_h264e_vepu580_wait(void *hal, HalEncTask *task)
             }
         } while (!slice_last);
 
-        hal_h264e_vepu580_status_check(regs);
-        task->hw_length += regs->reg_st.bs_lgth_l32;
+        ret = hal_h264e_vepu580_status_check(regs);
+        if (!ret)
+            task->hw_length += regs->reg_st.bs_lgth_l32;
     } else {
         ret = mpp_dev_ioctl(ctx->dev, MPP_DEV_CMD_POLL, NULL);
         if (ret) {
             mpp_err_f("poll cmd failed %d\n", ret);
             ret = MPP_ERR_VPUHW;
         } else {
-            hal_h264e_vepu580_status_check(regs);
-            task->hw_length += regs->reg_st.bs_lgth_l32;
+            ret = hal_h264e_vepu580_status_check(regs);
+            if (!ret)
+                task->hw_length += regs->reg_st.bs_lgth_l32;
         }
 
         mpp_packet_add_segment_info(pkt, type, offset, regs->reg_st.bs_lgth_l32);
@@ -2461,7 +2510,7 @@ static MPP_RET hal_h264e_vepu580_wait(void *hal, HalEncTask *task)
             amend->diable_split_out = !split_out;
             amend->old_length = task->hw_length;
             amend->slice->is_multi_slice = (ctx->cfg->split.split_mode > 0);
-            h264e_vepu_stream_amend_proc(amend, ctx->cfg->codec.h264.hw_poc_type);
+            h264e_vepu_stream_amend_proc(amend, &ctx->cfg->codec.h264.hw_cfg);
             task->hw_length = amend->new_length;
         } else if (amend->prefix) {
             /* check prefix value */

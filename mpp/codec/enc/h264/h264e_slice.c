@@ -586,7 +586,7 @@ void h264e_slice_write_header(H264eSlice *slice, MppWriteCtx *s)
                     mpp_writer_bits(s), slice->pic_parameter_set_id);
 
     /* frame_num */
-    mpp_writer_put_bits(s, slice->frame_num, 16);
+    mpp_writer_put_bits(s, slice->frame_num, slice->log2_max_frame_num);
     h264e_dbg_slice("used bit %2d frame_num %d\n",
                     mpp_writer_bits(s), slice->frame_num);
 
@@ -679,6 +679,13 @@ void h264e_slice_write_header(H264eSlice *slice, MppWriteCtx *s)
                    slice->nal_reference_idc, slice->idr_flag);
 
     if (slice->nal_reference_idc) {
+        /* In VEPU1/2, lt_ref_flag is fixed to 0, so it must be replaced by data in slice. */
+        if (slice->long_term_reference_flag != marking->long_term_reference_flag) {
+            marking->long_term_reference_flag = slice->long_term_reference_flag;
+            h264e_dbg_slice("warning: update lt_ref_flag from %d to %d\n",
+                            marking->long_term_reference_flag, slice->long_term_reference_flag);
+        }
+
         h264e_dbg_slice("get marking %p\n", marking);
         write_marking(s, marking);
     }
