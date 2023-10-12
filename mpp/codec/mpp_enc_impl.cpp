@@ -653,6 +653,13 @@ MPP_RET mpp_enc_proc_rc_cfg(MppCodingType coding, MppEncRcCfg *dst, MppEncRcCfg 
         if (change & MPP_ENC_RC_CFG_CHANGE_QP_VI)
             dst->qp_delta_vi = src->qp_delta_vi;
 
+        if (change & MPP_ENC_RC_CFG_CHANGE_FQP) {
+            dst->fqp_min_i = src->fqp_min_i;
+            dst->fqp_min_p = src->fqp_min_p;
+            dst->fqp_max_i = src->fqp_max_i;
+            dst->fqp_max_p = src->fqp_max_p;
+        }
+
         if (change & MPP_ENC_RC_CFG_CHANGE_HIER_QP) {
             dst->hier_qp_en = src->hier_qp_en;
             memcpy(dst->hier_qp_delta, src->hier_qp_delta, sizeof(src->hier_qp_delta));
@@ -800,6 +807,15 @@ MPP_RET mpp_enc_proc_hw_cfg(MppEncHwCfg *dst, MppEncHwCfg *src)
         if (change & MPP_ENC_HW_CFG_CHANGE_AQ_STEP_P)
             memcpy(dst->aq_step_p, src->aq_step_p, sizeof(dst->aq_step_p));
 
+        if (change & MPP_ENC_HW_CFG_CHANGE_QBIAS_I)
+            dst->qbias_i = src->qbias_i;
+
+        if (change & MPP_ENC_HW_CFG_CHANGE_QBIAS_P)
+            dst->qbias_p = src->qbias_p;
+
+        if (change & MPP_ENC_HW_CFG_CHANGE_QBIAS_EN)
+            dst->qbias_en = src->qbias_en;
+
         if (change & MPP_ENC_HW_CFG_CHANGE_MB_RC)
             dst->mb_rc_disable = src->mb_rc_disable;
 
@@ -897,6 +913,7 @@ MPP_RET mpp_enc_proc_cfg(MppEncImpl *enc, MpiCmd cmd, void *param)
         MppEncCfgImpl *impl = (MppEncCfgImpl *)param;
         MppEncCfgSet *src = &impl->cfg;
         RK_U32 change = src->base.change;
+        MPP_RET ret_tmp = MPP_OK;
 
         /* get base cfg here */
         if (change) {
@@ -910,8 +927,9 @@ MPP_RET mpp_enc_proc_cfg(MppEncImpl *enc, MpiCmd cmd, void *param)
 
         /* process rc cfg at mpp_enc module */
         if (src->rc.change) {
-            ret = mpp_enc_proc_rc_cfg(enc->coding, &enc->cfg.rc, &src->rc);
-
+            ret_tmp = mpp_enc_proc_rc_cfg(enc->coding, &enc->cfg.rc, &src->rc);
+            if (ret_tmp != MPP_OK)
+                ret = ret_tmp;
             // update ref cfg
             if ((enc->cfg.rc.change & MPP_ENC_RC_CFG_CHANGE_GOP_REF_CFG) &&
                 (enc->cfg.rc.gop > 0))
@@ -922,18 +940,24 @@ MPP_RET mpp_enc_proc_cfg(MppEncImpl *enc, MpiCmd cmd, void *param)
 
         /* process hardware cfg at mpp_enc module */
         if (src->hw.change) {
-            ret = mpp_enc_proc_hw_cfg(&enc->cfg.hw, &src->hw);
+            ret_tmp = mpp_enc_proc_hw_cfg(&enc->cfg.hw, &src->hw);
+            if (ret_tmp != MPP_OK)
+                ret = ret_tmp;
             src->hw.change = 0;
         }
 
         /* process hardware cfg at mpp_enc module */
         if (src->tune.change) {
-            ret = mpp_enc_proc_tune_cfg(&enc->cfg.tune, &src->tune);
+            ret_tmp = mpp_enc_proc_tune_cfg(&enc->cfg.tune, &src->tune);
+            if (ret_tmp != MPP_OK)
+                ret = ret_tmp;
             src->tune.change = 0;
         }
 
         /* Then process the rest config */
-        ret = enc_impl_proc_cfg(enc->impl, cmd, param);
+        ret_tmp = enc_impl_proc_cfg(enc->impl, cmd, param);
+        if (ret_tmp != MPP_OK)
+            ret = ret_tmp;
     } break;
     case MPP_ENC_SET_RC_CFG : {
         MppEncRcCfg *src = (MppEncRcCfg *)param;
@@ -1212,6 +1236,7 @@ static void set_rc_cfg(RcCfg *cfg, MppEncCfgSet *cfg_set)
     cfg->bps_target = rc->bps_target;
     cfg->bps_max    = rc->bps_max;
     cfg->bps_min    = rc->bps_min;
+    cfg->scene_mode = cfg_set->tune.scene_mode;
 
     cfg->hier_qp_cfg.hier_qp_en = rc->hier_qp_en;
     memcpy(cfg->hier_qp_cfg.hier_frame_num, rc->hier_frame_num, sizeof(rc->hier_frame_num));
@@ -1233,6 +1258,10 @@ static void set_rc_cfg(RcCfg *cfg, MppEncCfgSet *cfg_set)
         cfg->min_i_quality = rc->qp_min_i ? rc->qp_min_i : rc->qp_min;
         cfg->i_quality_delta = rc->qp_delta_ip;
         cfg->vi_quality_delta = rc->qp_delta_vi;
+        cfg->fqp_min_p = rc->fqp_min_p == INT_MAX ? cfg->min_quality : rc->fqp_min_p;
+        cfg->fqp_min_i = rc->fqp_min_i == INT_MAX ? cfg->min_i_quality : rc->fqp_min_i;
+        cfg->fqp_max_p = rc->fqp_max_p == INT_MAX ? cfg->max_quality : rc->fqp_max_p;
+        cfg->fqp_max_i = rc->fqp_max_i == INT_MAX ? cfg->max_i_quality : rc->fqp_max_i;
     } break;
     case MPP_VIDEO_CodingMJPEG : {
         MppEncJpegCfg *jpeg = &codec->jpeg;
@@ -1242,6 +1271,10 @@ static void set_rc_cfg(RcCfg *cfg, MppEncCfgSet *cfg_set)
         cfg->min_quality = jpeg->qf_min;
         cfg->max_i_quality = jpeg->qf_max;
         cfg->min_i_quality = jpeg->qf_min;
+        cfg->fqp_min_i = 100 - jpeg->qf_max;
+        cfg->fqp_max_i = 100 - jpeg->qf_min;
+        cfg->fqp_min_p = 100 - jpeg->qf_max;
+        cfg->fqp_max_p = 100 - jpeg->qf_min;
     } break;
     default : {
         mpp_err_f("unsupport coding type %d\n", codec->coding);

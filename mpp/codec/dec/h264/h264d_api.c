@@ -82,6 +82,7 @@ static MPP_RET free_cur_ctx(H264dCurCtx_t *p_Cur)
         }
         MPP_FREE(p_Cur->strm.nalu_buf);
         MPP_FREE(p_Cur->strm.head_buf);
+        MPP_FREE(p_Cur->strm.tmp_buf);
 
         for (i = 0; i < MAX_MARKING_TIMES; i++)
             MPP_FREE(p_Cur->dec_ref_pic_marking_buffer[i]);
@@ -106,6 +107,8 @@ static MPP_RET init_cur_ctx(H264dCurCtx_t *p_Cur)
     p_strm->nalu_buf = mpp_malloc_size(RK_U8, p_strm->nalu_max_size);
     p_strm->head_max_size = HEAD_BUF_MAX_SIZE;
     p_strm->head_buf = mpp_malloc_size(RK_U8, p_strm->head_max_size);
+    p_strm->tmp_max_size = HEAD_BUF_MAX_SIZE;
+    p_strm->tmp_buf = mpp_malloc_size(RK_U8, p_strm->head_max_size);
     MEM_CHECK(ret, p_strm->nalu_buf && p_strm->head_buf);
     p_strm->prefixdata = 0xffffffff;
     for (i = 0; i < MAX_NUM_DPB_LAYERS; i++) {
@@ -292,8 +295,7 @@ static MPP_RET h264d_flush_dpb_eos(H264_DecCtx_t *p_Dec)
         // layer_id == 1
         FUN_CHECK(ret = flush_dpb(p_Dec->p_Vid->p_Dpb_layer[1], 1));
         FUN_CHECK(ret = init_dpb(p_Dec->p_Vid, p_Dec->p_Vid->p_Dpb_layer[1], 2));
-        p_Dec->p_Vid->p_Dpb_layer[0]->size = MPP_MIN(p_Dec->p_Vid->p_Dpb_layer[1]->size, MAX_DPB_SIZE / 2);
-        p_Dec->p_Vid->dpb_size[0] = p_Dec->p_Vid->p_Dpb_layer[0]->size;
+        FUN_CHECK(ret = check_mvc_dpb(p_Dec->p_Vid, p_Dec->p_Vid->p_Dpb_layer[0], p_Dec->p_Vid->p_Dpb_layer[1]));
     }
 
     flush_dpb_buf_slot(p_Dec);
@@ -400,8 +402,7 @@ MPP_RET h264d_reset(void *decoder)
         // layer_id == 1
         FUN_CHECK(ret = flush_dpb(p_Dec->p_Vid->p_Dpb_layer[1], 1));
         FUN_CHECK(ret = init_dpb(p_Dec->p_Vid, p_Dec->p_Vid->p_Dpb_layer[1], 2));
-        p_Dec->p_Vid->p_Dpb_layer[0]->size = MPP_MIN(p_Dec->p_Vid->p_Dpb_layer[1]->size, MAX_DPB_SIZE / 2);
-        p_Dec->p_Vid->dpb_size[0] = p_Dec->p_Vid->p_Dpb_layer[0]->size;
+        FUN_CHECK(ret = check_mvc_dpb(p_Dec->p_Vid, p_Dec->p_Vid->p_Dpb_layer[0], p_Dec->p_Vid->p_Dpb_layer[1]));
     }
     flush_dpb_buf_slot(p_Dec);
     //!< reset input parameter
@@ -428,13 +429,14 @@ MPP_RET h264d_reset(void *decoder)
     p_Dec->p_Cur->curr_pts  = 0;
     //!< reset current stream
     p_strm = &p_Dec->p_Cur->strm;
-    p_strm->prefixdata      = 0xffffffff;
-    p_strm->nalu_offset     = 0;
-    p_strm->nalu_len        = 0;
-    p_strm->head_offset     = 0;
-    p_strm->startcode_found = 0;
-    p_strm->endcode_found   = 0;
-    p_strm->startcode_found = p_Dec->p_Inp->is_nalff;
+    p_strm->prefixdata        = 0xffffffff;
+    p_strm->nalu_offset       = 0;
+    p_strm->nalu_len          = 0;
+    p_strm->head_offset       = 0;
+    p_strm->tmp_offset        = 0;
+    p_strm->first_mb_in_slice = 0;
+    p_strm->endcode_found     = 0;
+    p_strm->startcode_found   = p_Dec->p_Inp->is_nalff;
     //!< reset decoder parameter
     p_Dec->next_state = SliceSTATE_ResetSlice;
     p_Dec->nalu_ret = NALU_NULL;

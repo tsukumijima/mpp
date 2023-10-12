@@ -17,6 +17,7 @@
 #define MODULE_TAG "h264e_api_v2"
 
 #include <string.h>
+#include <limits.h>
 
 #include "mpp_env.h"
 #include "mpp_mem.h"
@@ -180,6 +181,10 @@ static void init_h264e_cfg_set(MppEncCfgSet *cfg, MppClientType type)
     rc_cfg->qp_max_i = 0;
     rc_cfg->qp_min_i = 0;
     rc_cfg->qp_delta_ip = 2;
+    rc_cfg->fqp_min_i = INT_MAX;
+    rc_cfg->fqp_min_p = INT_MAX;
+    rc_cfg->fqp_max_i = INT_MAX;
+    rc_cfg->fqp_max_p = INT_MAX;
 }
 
 static void h264e_add_syntax(H264eCtx *ctx, H264eSyntaxType type, void *p)
@@ -667,6 +672,13 @@ static MPP_RET h264e_gen_hdr(void *ctx, MppPacket pkt)
         mpp_packet_add_segment_info(pkt, H264_NALU_TYPE_PPS,
                                     p->pps_offset, p->pps_len);
     }
+
+    /*
+     * After gen_hdr, the change of codec/prep must be cleared to 0,
+     * otherwise the change will affect the next idr frame
+     */
+    p->cfg->codec.h264.change = 0;
+    p->cfg->prep.change = 0;
 
     h264e_dbg_func("leave\n");
     return MPP_OK;

@@ -33,6 +33,7 @@
 #include "hal_bufs.h"
 #include "rkv_enc_def.h"
 #include "vepu541_common.h"
+#include "vepu5xx_common.h"
 #include "vepu540c_common.h"
 #include "hal_h265e_vepu540c.h"
 #include "hal_h265e_vepu540c_reg.h"
@@ -116,26 +117,6 @@ static RK_S32 aq_qp_dealt_default[16] = {
     -4, -3, -2, -1,
     0,  1,  2,  3,
     4,  5,  6,  8,
-};
-
-static RK_U32 lamd_moda_qp[52] = {
-    0x00000049, 0x0000005c, 0x00000074, 0x00000092, 0x000000b8, 0x000000e8, 0x00000124, 0x00000170,
-    0x000001cf, 0x00000248, 0x000002df, 0x0000039f, 0x0000048f, 0x000005bf, 0x0000073d, 0x0000091f,
-    0x00000b7e, 0x00000e7a, 0x0000123d, 0x000016fb, 0x00001cf4, 0x0000247b, 0x00002df6, 0x000039e9,
-    0x000048f6, 0x00005bed, 0x000073d1, 0x000091ec, 0x0000b7d9, 0x0000e7a2, 0x000123d7, 0x00016fb2,
-    0x0001cf44, 0x000247ae, 0x0002df64, 0x00039e89, 0x00048f5c, 0x0005bec8, 0x00073d12, 0x00091eb8,
-    0x000b7d90, 0x000e7a23, 0x00123d71, 0x0016fb20, 0x001cf446, 0x00247ae1, 0x002df640, 0x0039e88c,
-    0x0048f5c3, 0x005bec81, 0x0073d119, 0x0091eb85
-};
-
-static RK_U32 lamd_modb_qp[52] = {
-    0x00000070, 0x00000089, 0x000000b0, 0x000000e0, 0x00000112, 0x00000160, 0x000001c0, 0x00000224,
-    0x000002c0, 0x00000380, 0x00000448, 0x00000580, 0x00000700, 0x00000890, 0x00000b00, 0x00000e00,
-    0x00001120, 0x00001600, 0x00001c00, 0x00002240, 0x00002c00, 0x00003800, 0x00004480, 0x00005800,
-    0x00007000, 0x00008900, 0x0000b000, 0x0000e000, 0x00011200, 0x00016000, 0x0001c000, 0x00022400,
-    0x0002c000, 0x00038000, 0x00044800, 0x00058000, 0x00070000, 0x00089000, 0x000b0000, 0x000e0000,
-    0x00112000, 0x00160000, 0x001c0000, 0x00224000, 0x002c0000, 0x00380000, 0x00448000, 0x00580000,
-    0x00700000, 0x00890000, 0x00b00000, 0x00e00000
 };
 
 static MPP_RET vepu540c_h265_setup_hal_bufs(H265eV540cHalContext *ctx)
@@ -468,6 +449,10 @@ static void vepu540c_h265_global_cfg_set(H265eV540cHalContext *ctx, H265eV540cRe
     }
     reg_wgt->reg1484_qnt_bias_comb.qnt_bias_i = 171;
     reg_wgt->reg1484_qnt_bias_comb.qnt_bias_p = 85;
+    if (hw->qbias_en) {
+        reg_wgt->reg1484_qnt_bias_comb.qnt_bias_i = hw->qbias_i;
+        reg_wgt->reg1484_qnt_bias_comb.qnt_bias_p = hw->qbias_p;
+    }
     /* CIME */
     {
         /* 0x1760 */
@@ -554,6 +539,9 @@ MPP_RET hal_h265e_v540c_init(void *hal, MppEncHalCfg *cfg)
 
         hw->qp_delta_row_i  = 2;
         hw->qp_delta_row    = 2;
+        hw->qbias_i         = 171;
+        hw->qbias_p         = 85;
+        hw->qbias_en        = 0;
 
         memcpy(hw->aq_thrd_i, aq_thd_default, sizeof(hw->aq_thrd_i));
         memcpy(hw->aq_thrd_p, aq_thd_default, sizeof(hw->aq_thrd_p));
@@ -843,21 +831,27 @@ static MPP_RET vepu540c_h265_set_pp_regs(H265eV540cRegSet *regs, VepuFmtCfg *fmt
               stridey : stridey / 2;
 
     if (reg_base->reg0198_src_fmt.src_cfmt < VEPU541_FMT_NONE) {
-        reg_base->reg0199_src_udfy.csc_wgt_r2y = 66;
-        reg_base->reg0199_src_udfy.csc_wgt_g2y = 129;
-        reg_base->reg0199_src_udfy.csc_wgt_b2y = 25;
+        const VepuRgb2YuvCfg *cfg_coeffs = cfg_coeffs = get_rgb2yuv_cfg(prep_cfg->range, prep_cfg->color);
 
-        reg_base->reg0200_src_udfu.csc_wgt_r2u = -38;
-        reg_base->reg0200_src_udfu.csc_wgt_g2u = -74;
-        reg_base->reg0200_src_udfu.csc_wgt_b2u = 112;
+        hal_h265e_dbg_simple("input color range %d colorspace %d", prep_cfg->range, prep_cfg->color);
 
-        reg_base->reg0201_src_udfv.csc_wgt_r2v = 112;
-        reg_base->reg0201_src_udfv.csc_wgt_g2v = -94;
-        reg_base->reg0201_src_udfv.csc_wgt_b2v = -18;
+        reg_base->reg0199_src_udfy.csc_wgt_r2y = cfg_coeffs->_2y.r_coeff;
+        reg_base->reg0199_src_udfy.csc_wgt_g2y = cfg_coeffs->_2y.g_coeff;
+        reg_base->reg0199_src_udfy.csc_wgt_b2y = cfg_coeffs->_2y.b_coeff;
 
-        reg_base->reg0202_src_udfo.csc_ofst_y = 16;
-        reg_base->reg0202_src_udfo.csc_ofst_u = 128;
-        reg_base->reg0202_src_udfo.csc_ofst_v = 128;
+        reg_base->reg0200_src_udfu.csc_wgt_r2u = cfg_coeffs->_2u.r_coeff;
+        reg_base->reg0200_src_udfu.csc_wgt_g2u = cfg_coeffs->_2u.g_coeff;
+        reg_base->reg0200_src_udfu.csc_wgt_b2u = cfg_coeffs->_2u.b_coeff;
+
+        reg_base->reg0201_src_udfv.csc_wgt_r2v = cfg_coeffs->_2v.r_coeff;
+        reg_base->reg0201_src_udfv.csc_wgt_g2v = cfg_coeffs->_2v.g_coeff;
+        reg_base->reg0201_src_udfv.csc_wgt_b2v = cfg_coeffs->_2v.b_coeff;
+
+        reg_base->reg0202_src_udfo.csc_ofst_y = cfg_coeffs->_2y.offset;
+        reg_base->reg0202_src_udfo.csc_ofst_u = cfg_coeffs->_2u.offset;
+        reg_base->reg0202_src_udfo.csc_ofst_v = cfg_coeffs->_2v.offset;
+
+        hal_h265e_dbg_simple("use color range %d colorspace %d", cfg_coeffs->dst_range, cfg_coeffs->color);
     }
 
     reg_base->reg0205_src_strd0.src_strd0  = stridey;

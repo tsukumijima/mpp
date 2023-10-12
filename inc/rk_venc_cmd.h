@@ -238,6 +238,7 @@ typedef enum MppEncRcCfgChange_e {
     MPP_ENC_RC_CFG_CHANGE_ST_TIME       = (1 << 26),
     MPP_ENC_RC_CFG_CHANGE_REFRESH       = (1 << 27),
     MPP_ENC_RC_CFG_CHANGE_GOP_REF_CFG   = (1 << 28),
+    MPP_ENC_RC_CFG_CHANGE_FQP           = (1 << 29),
     MPP_ENC_RC_CFG_CHANGE_ALL           = (0xFFFFFFFF),
 } MppEncRcCfgChange;
 
@@ -405,6 +406,10 @@ typedef struct MppEncRcCfg_t {
     RK_S32                  qp_max_step;                /* delta qp between each two P frame */
     RK_S32                  qp_delta_ip;                /* delta qp between I and P */
     RK_S32                  qp_delta_vi;                /* delta qp between vi and P */
+    RK_S32                  fqp_min_i;
+    RK_S32                  fqp_min_p;
+    RK_S32                  fqp_max_i;
+    RK_S32                  fqp_max_p;
 
     RK_S32                  hier_qp_en;
     RK_S32                  hier_qp_delta[4];
@@ -428,6 +433,9 @@ typedef enum MppEncHwCfgChange_e {
     MPP_ENC_HW_CFG_CHANGE_MB_RC         = (1 << 6),
     MPP_ENC_HW_CFG_CHANGE_CU_MODE_BIAS  = (1 << 8),
     MPP_ENC_HW_CFG_CHANGE_CU_SKIP_BIAS  = (1 << 9),
+    MPP_ENC_HW_CFG_CHANGE_QBIAS_I       = (1 << 10),
+    MPP_ENC_HW_CFG_CHANGE_QBIAS_P       = (1 << 11),
+    MPP_ENC_HW_CFG_CHANGE_QBIAS_EN      = (1 << 12),
     MPP_ENC_HW_CFG_CHANGE_ALL           = (0xFFFFFFFF),
 } MppEncHwCfgChange;
 
@@ -443,6 +451,9 @@ typedef struct MppEncHwCfg_t {
     /* vepu541/vepu540 */
     RK_S32                  qp_delta_row;               /* delta qp between two row in P frame */
     RK_S32                  qp_delta_row_i;             /* delta qp between two row in I frame */
+    RK_S32                  qbias_i;
+    RK_S32                  qbias_p;
+    RK_S32                  qbias_en;
     RK_U32                  aq_thrd_i[16];
     RK_U32                  aq_thrd_p[16];
     RK_S32                  aq_step_i[16];
