@@ -283,19 +283,31 @@ static MPP_RET check_sps_pps(H264_SPS_t *sps, H264_subSPS_t *subset_sps,
     ret |= (sps->log2_max_pic_order_cnt_lsb_minus4 > 12);
     ret |= (sps->num_ref_frames_in_pic_order_cnt_cycle > 255);
     ret |= (sps->max_num_ref_frames > 16);
-    ret |= (sps->profile_idc == 244);
+    ret |= (sps->qpprime_y_zero_transform_bypass_flag == 1);
+
+    if (ret) {
+        H264D_ERR("sps has error, sps_id=%d", sps->seq_parameter_set_id);
+        goto __FAILED;
+    }
 
     if (hw_info && hw_info->cap_8k)
         max_mb_width  = MAX_MBW_8Kx4K * hw_info->cap_core_num;
     else if (hw_info && hw_info->cap_4k)
         max_mb_width  = MAX_MBW_4Kx2K;
 
-    ret |= (sps->pic_width_in_mbs_minus1 < 3 || sps->pic_width_in_mbs_minus1 > max_mb_width);
-
+    ret |= (sps->pic_width_in_mbs_minus1 < 3);
     if (ret) {
-        H264D_ERR("sps has error, sps_id=%d", sps->seq_parameter_set_id);
+        H264D_ERR("sps %d too small width %d\n", sps->seq_parameter_set_id,
+                  (sps->pic_width_in_mbs_minus1 + 1) * 16);
         goto __FAILED;
     }
+    ret |= (sps->pic_width_in_mbs_minus1 > max_mb_width);
+    if (ret) {
+        H264D_ERR("width %d is larger than soc max support %d\n",
+                  (sps->pic_width_in_mbs_minus1 + 1) * 16, max_mb_width * 16);
+        goto __FAILED;
+    }
+
     if (subset_sps) { //!< MVC
         ret |= (subset_sps->num_views_minus1 != 1);
         if (subset_sps->num_anchor_refs_l0[0] > 0)

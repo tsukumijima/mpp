@@ -524,6 +524,7 @@ MPP_RET h264d_prepare(void *decoder, MppPacket pkt, HalDecTask *task)
     p_Inp = p_Dec->p_Inp;
     if (p_Inp->has_get_eos || p_Dec->errctx.un_spt_flag) {
         mpp_packet_set_length(pkt, 0);
+        task->flags.eos = mpp_packet_get_eos(pkt);
         goto __RETURN;
     }
     p_Inp->in_pkt = pkt;
@@ -537,6 +538,7 @@ MPP_RET h264d_prepare(void *decoder, MppPacket pkt, HalDecTask *task)
         p_Inp->has_get_eos = 1;
         p_Inp->in_buf = NULL;
         p_Inp->in_length = 0;
+        mpp_packet_set_length(p_Inp->in_pkt, 0);
         task->flags.eos = p_Inp->pkt_eos;
     }
 
