@@ -26,6 +26,7 @@
 #include "mpp_common.h"
 #include "mpp_frame_impl.h"
 #include "mpp_packet_impl.h"
+#include "mpp_dmabuf.h"
 
 #include "hal_h265e_debug.h"
 #include "h265e_syntax_new.h"
@@ -1712,6 +1713,7 @@ static MPP_RET setup_intra_refresh(H265eV580RegSet *regs, H265eV580HalContext *c
 
     regs->reg_base.reg0192_enc_pic.roi_en = 1;
     regs->reg_base.reg0178_roi_addr = roi_base_cfg_buf_fd;
+    mpp_buffer_sync_end(ctx->roi_base_cfg_buf);
 
 __RET:
     hal_h265e_dbg_func("leave, ret %d\n", ret);
@@ -3026,8 +3028,10 @@ MPP_RET hal_h265e_v580_wait(void *hal, HalEncTask *task)
                 param.length = slice_len;
 
                 if (finish_cnt > 0) {
-                    void *tile1_ptr  = mpp_buffer_get_ptr(ctx->hw_tile_stream[finish_cnt - 1]);
+                    MppBuffer buf = ctx->hw_tile_stream[finish_cnt - 1];
+                    void *tile1_ptr  = mpp_buffer_get_ptr(buf);
 
+                    mpp_buffer_sync_ro_partial_begin(buf, tile1_offset, slice_len);
                     memcpy(ptr + seg_offset, tile1_ptr + tile1_offset, slice_len);
                     tile1_offset += slice_len;
                 }
@@ -3160,7 +3164,10 @@ MPP_RET hal_h265e_v580_ret_task(void *hal, HalEncTask *task)
             if (!ctx->cfg->split.split_out) {
                 if (i) {  //copy tile 1 stream
                     RK_U32 len = fb->out_strm_size - stream_len;
-                    void *tile1_ptr  = mpp_buffer_get_ptr(ctx->hw_tile_stream[i - 1]);
+                    MppBuffer buf = ctx->hw_tile_stream[i - 1];
+                    void *tile1_ptr  = mpp_buffer_get_ptr(buf);
+
+                    mpp_buffer_sync_ro_partial_begin(buf, 0, len);
                     memcpy(ptr + stream_len + offset, tile1_ptr, len);
                 }
                 stream_len = fb->out_strm_size;
