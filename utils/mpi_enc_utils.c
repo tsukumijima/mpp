@@ -36,6 +36,7 @@ RK_S32 mpi_enc_width_default_stride(RK_S32 width, MppFrameFormat fmt)
     RK_S32 stride = 0;
 
     switch (fmt & MPP_FRAME_FMT_MASK) {
+    case MPP_FMT_YUV400 :
     case MPP_FMT_YUV420SP :
     case MPP_FMT_YUV420SP_VU : {
         stride = MPP_ALIGN(width, 8);
@@ -589,7 +590,7 @@ MPP_RET mpi_enc_test_cmd_update_by_args(MpiEncTestArgs* cmd, int argc, char **ar
 
     mpp_opt_init(&opts);
     /* should change node count when option increases */
-    mpp_opt_setup(opts, cmd, 67, enc_opt_cnt);
+    mpp_opt_setup(opts, cmd, 71, enc_opt_cnt);
 
     for (i = 0; i < enc_opt_cnt; i++)
         mpp_opt_add(opts, &enc_opts[i]);
