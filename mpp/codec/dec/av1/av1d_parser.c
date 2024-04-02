@@ -121,7 +121,8 @@ static MPP_RET get_pixel_format(Av1CodecContext *ctx)
             else if (bit_depth == 10) {
                 pix_fmt = MPP_FMT_YUV420SP_10BIT;
                 /* rk3588, allow user config 8bit for 10bit source. */
-                if ((ctx->usr_set_fmt & MPP_FRAME_FMT_MASK) == MPP_FMT_YUV420SP &&
+                if ((mpp_get_soc_type() == ROCKCHIP_SOC_RK3588) &&
+                    (ctx->usr_set_fmt & MPP_FRAME_FMT_MASK) == MPP_FMT_YUV420SP &&
                     (s->cfg->base.out_fmt & MPP_FRAME_FMT_MASK) == MPP_FMT_YUV420SP)
                     pix_fmt = MPP_FMT_YUV420SP;
             } else {
@@ -206,9 +207,11 @@ static void read_global_param(AV1Context *s, RK_S32 type, RK_S32 ref, RK_S32 idx
     mx = 1 << abs_bits;
     r = (prev_gm_param >> prec_diff) - sub;
 
+    s->cur_frame.gm_params[ref].wmmat_val[idx] =
+        decode_signed_subexp_with_ref(s->raw_frame_header->gm_params[ref][idx],
+                                      -mx, mx + 1, r);
     s->cur_frame.gm_params[ref].wmmat[idx] =
-        (decode_signed_subexp_with_ref(s->raw_frame_header->gm_params[ref][idx],
-                                       -mx, mx + 1, r) << prec_diff) + round;
+        (s->cur_frame.gm_params[ref].wmmat_val[idx] << prec_diff) + round;
 }
 
 static RK_U16 round_two(RK_U64 x, RK_U16 n)
@@ -673,6 +676,33 @@ static MPP_RET update_reference_list(Av1CodecContext *ctx)
     RK_S32 bwd_buf_idx;
     RK_S32 alt2_buf_idx;
 
+    for (i = 0; i < AV1_NUM_REF_FRAMES; i++) {
+        if (header->refresh_frame_flags & (1 << i)) {
+            s->ref_s[i] = (AV1ReferenceFrameState) {
+                .valid = 1,
+                 .frame_id = header->current_frame_id,
+                  .upscaled_width = s->upscaled_width,
+                   .frame_width = s->frame_width,
+                    .frame_height = s->frame_height,
+                     .render_width = s->render_width,
+                      .render_height = s->render_height,
+                       .frame_type = header->frame_type,
+                        .subsampling_x = s->sequence_header->color_config.subsampling_x,
+                         .subsampling_y = s->sequence_header->color_config.subsampling_y,
+                          .bit_depth = s->bit_depth,
+                           .order_hint = s->order_hint,
+            };
+            memcpy(s->ref_s[i].loop_filter_ref_deltas, header->loop_filter_ref_deltas,
+                   sizeof(header->loop_filter_ref_deltas));
+            memcpy(s->ref_s[i].loop_filter_mode_deltas, header->loop_filter_mode_deltas,
+                   sizeof(header->loop_filter_mode_deltas));
+            memcpy(s->ref_s[i].feature_enabled, header->feature_enabled,
+                   sizeof(header->feature_enabled));
+            memcpy(s->ref_s[i].feature_value, header->feature_value,
+                   sizeof(header->feature_value));
+        }
+    }
+
     if (!header->show_existing_frame) {
         lst2_buf_idx = s->raw_frame_header->ref_frame_idx[AV1_REF_FRAME_LAST2 - AV1_REF_FRAME_LAST];
         lst3_buf_idx = s->raw_frame_header->ref_frame_idx[AV1_REF_FRAME_LAST3 - AV1_REF_FRAME_LAST];
@@ -767,6 +797,8 @@ static MPP_RET get_current_frame(Av1CodecContext *ctx)
         mpp_frame_set_offset_x(frame->f, 0);
         mpp_frame_set_offset_y(frame->f, 0);
         mpp_frame_set_ver_stride(frame->f, MPP_ALIGN(ctx->height, 8) + 28);
+    } else if (MPP_FRAME_FMT_IS_TILE(s->cfg->base.out_fmt)) {
+        mpp_frame_set_fmt(frame->f, ctx->pix_fmt | ((s->cfg->base.out_fmt & (MPP_FRAME_TILE_FLAG))));
     } else
         mpp_frame_set_fmt(frame->f, ctx->pix_fmt);
 

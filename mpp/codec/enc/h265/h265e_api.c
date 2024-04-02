@@ -43,6 +43,7 @@ static MPP_RET h265e_init(void *ctx, EncImplCfg *ctrlCfg)
     MppEncRcCfg *rc_cfg = &ctrlCfg->cfg->rc;
     MppEncPrepCfg *prep = &ctrlCfg->cfg->prep;
     MppEncH265Cfg *h265 = NULL;
+    RockchipSocType soc_type;
 
     if (ctx == NULL) {
         mpp_err_f("invalid NULL ctx\n");
@@ -87,16 +88,16 @@ static MPP_RET h265e_init(void *ctx, EncImplCfg *ctrlCfg)
     h265->level = 120;
     h265->const_intra_pred = 0;           /* constraint intra prediction flag */
 
-    if (mpp_get_soc_type() == ROCKCHIP_SOC_RK3528) {
+    soc_type = mpp_get_soc_type();
+    if (soc_type == ROCKCHIP_SOC_RK3528 || soc_type == ROCKCHIP_SOC_RK3576) {
         h265->ctu_size = 32;
         h265->max_cu_size = 32;
-        h265->tmvp_enable = 0;
     } else {
         h265->ctu_size = 64;
         h265->max_cu_size = 64;
-        h265->tmvp_enable = 1;
     }
 
+    h265->tmvp_enable = 0;
     h265->amp_enable = 0;
     h265->sao_enable = 1;
 
@@ -149,10 +150,10 @@ static MPP_RET h265e_init(void *ctx, EncImplCfg *ctrlCfg)
     rc_cfg->bps_min = rc_cfg->bps_target * 3 / 4;
     rc_cfg->fps_in_flex = 0;
     rc_cfg->fps_in_num = 30;
-    rc_cfg->fps_in_denorm = 1;
+    rc_cfg->fps_in_denom = 1;
     rc_cfg->fps_out_flex = 0;
     rc_cfg->fps_out_num = 30;
-    rc_cfg->fps_out_denorm = 1;
+    rc_cfg->fps_out_denom = 1;
     rc_cfg->gop = 60;
     rc_cfg->max_reenc_times = 1;
     rc_cfg->max_i_prop = 30;
@@ -478,6 +479,7 @@ static MPP_RET h265e_proc_h265_cfg(MppEncH265Cfg *dst, MppEncH265Cfg *src)
         }
 
         dst->level = src->level;
+        dst->tier = (src->level >= 120) ? src->tier : 0;
     }
 
     if (change & MPP_ENC_H265_CFG_CU_CHANGE) {

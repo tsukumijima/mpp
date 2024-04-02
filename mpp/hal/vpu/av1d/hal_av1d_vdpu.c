@@ -676,7 +676,7 @@ static void set_ref_sign_bias(VdpuAv1dRegSet *regs, RK_S32 i, RK_S32 val)
 #define MAX_FRAME_DISTANCE 31
 #define MAX_ACTIVE_REFS AV1_ACTIVE_REFS_EX
 
-RK_S32 GetRelativeDist(DXVA_PicParams_AV1 *dxva, RK_S32 a, RK_S32 b)
+static RK_S32 GetRelativeDist(DXVA_PicParams_AV1 *dxva, RK_S32 a, RK_S32 b)
 {
     if (!dxva->order_hint_bits) return 0;
     const RK_S32 bits = dxva->order_hint_bits - 1;
@@ -733,7 +733,7 @@ RK_S32 GetRelativeDist(DXVA_PicParams_AV1 *dxva, RK_S32 a, RK_S32 b)
 }
 
 
-void set_frame_sign_bias(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
+static void set_frame_sign_bias(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
 {
     RK_U32 i = 0;
     VdpuAv1dRegCtx *reg_ctx = (VdpuAv1dRegCtx *)p_hal->reg_ctx;
@@ -757,7 +757,7 @@ void set_frame_sign_bias(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
     }
 }
 
-void vdpu_av1d_set_prob(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_prob(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
 {
     VdpuAv1dRegCtx *reg_ctx = (VdpuAv1dRegCtx *)p_hal->reg_ctx;
     const int mv_cdf_offset = offsetof(AV1CDFs, mv_cdf);
@@ -776,7 +776,7 @@ void vdpu_av1d_set_prob(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
     regs->addr_cfg.swreg173.sw_prob_tab_base_lsb        = mpp_buffer_get_fd(reg_ctx->prob_tbl_base);
 }
 
-void vdpu_av1d_set_reference_frames(Av1dHalCtx *p_hal, VdpuAv1dRegCtx *ctx, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_reference_frames(Av1dHalCtx *p_hal, VdpuAv1dRegCtx *ctx, DXVA_PicParams_AV1 *dxva)
 {
     RK_U32 tmp1, tmp2, i;
     RK_U32 cur_height, cur_width;
@@ -1097,7 +1097,7 @@ void vdpu_av1d_set_reference_frames(Av1dHalCtx *p_hal, VdpuAv1dRegCtx *ctx, DXVA
 }
 #undef MAX_FRAME_DISTANCE
 
-void vdpu_av1d_superres_params(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_superres_params(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
 {
     // Compute and store scaling paramers needed for superres
 #define SUPERRES_SCALE_BITS 3
@@ -1209,7 +1209,7 @@ end:
 }
 
 
-void vdpu_av1d_set_picture_dimensions(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_picture_dimensions(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
 {
     /* Write dimensions for the current picture
        (This is needed when scaling is used) */
@@ -1227,7 +1227,7 @@ void vdpu_av1d_set_picture_dimensions(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxv
     vdpu_av1d_superres_params(p_hal, dxva);
 }
 
-void vdpu_av1d_set_segmentation(VdpuAv1dRegCtx *ctx, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_segmentation(VdpuAv1dRegCtx *ctx, DXVA_PicParams_AV1 *dxva)
 {
     RK_U32 segval[MAX_MB_SEGMENTS][SEG_AV1_LVL_MAX];
     VdpuAv1dRegSet *regs = ctx->regs;
@@ -1391,7 +1391,7 @@ void vdpu_av1d_set_segmentation(VdpuAv1dRegCtx *ctx, DXVA_PicParams_AV1 *dxva)
     regs->swreg27.sw_global_mv_seg7 = segval[7][SEG_AV1_LVL_GLOBALMV];
 }
 
-void vdpu_av1d_set_loopfilter(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_loopfilter(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
 {
     VdpuAv1dRegCtx *ctx = p_hal->reg_ctx;
     VdpuAv1dRegSet *regs = ctx->regs;
@@ -1427,7 +1427,7 @@ void vdpu_av1d_set_loopfilter(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
     mpp_dev_set_reg_offset(p_hal->dev, 183, ctx->filt_info[DB_CTRL_COL].offset);
 }
 
-void vdpu_av1d_set_global_model(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_global_model(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
 {
     VdpuAv1dRegCtx *ctx = p_hal->reg_ctx;
     VdpuAv1dRegSet *regs = ctx->regs;
@@ -1469,7 +1469,7 @@ void vdpu_av1d_set_global_model(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
     regs->addr_cfg.swreg83.sw_global_model_base_lsb = mpp_buffer_get_fd(ctx->global_model);
 }
 
-void vdpu_av1d_set_tile_info_regs(VdpuAv1dRegCtx *ctx, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_tile_info_regs(VdpuAv1dRegCtx *ctx, DXVA_PicParams_AV1 *dxva)
 {
     int transpose = ctx->tile_transpose;
     VdpuAv1dRegSet *regs = ctx->regs;
@@ -1518,7 +1518,7 @@ static int check_tile_width(DXVA_PicParams_AV1 *dxva, RK_S32 width, RK_S32 leftm
     return valid;
 }
 
-void vdpu_av1d_set_tile_info_mem(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_tile_info_mem(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
 {
     VdpuAv1dRegCtx *ctx = (VdpuAv1dRegCtx *)p_hal->reg_ctx;
 
@@ -1530,6 +1530,25 @@ void vdpu_av1d_set_tile_info_mem(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
     RK_S32 size1 = transpose ? dxva->tiles.rows  :  dxva->tiles.cols;
     RK_S32 tile0, tile1;
     RK_U32 not_valid_tile_dimension = 0;
+    RK_U32 tiles[2][64];
+
+    /* convert to per tile position */
+    {
+        RK_U8 val = 0, i;
+
+        for (i = 0; i < dxva->tiles.cols; i++) {
+            tiles[0][i] = val;
+            val += dxva->tiles.widths[i];
+        }
+        tiles[0][i] = val;
+
+        val = 0;
+        for (i = 0; i < dxva->tiles.rows; i++) {
+            tiles[1][i] = val;
+            val += dxva->tiles.heights[i];
+        }
+        tiles[1][i] = val;
+    }
 
     // Write tile dimensions
     for (tile0 = 0; tile0 < size0; tile0++) {
@@ -1539,10 +1558,10 @@ void vdpu_av1d_set_tile_info_mem(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
             RK_S32 tile_id = transpose ? tile1 * size0 + tile0 : tile0 * size1 + tile1;
             RK_U32 start, end;
 
-            RK_U32 y0 = dxva->tiles.heights[tile_y];
-            RK_U32 y1 = dxva->tiles.heights[tile_y + 1];
-            RK_U32 x0 = dxva->tiles.widths[tile_x];
-            RK_U32 x1 = dxva->tiles.widths[tile_x + 1];
+            RK_U32 y0 = tiles[1][tile_y];
+            RK_U32 y1 = tiles[1][tile_y + 1];
+            RK_U32 x0 = tiles[0][tile_x];
+            RK_U32 x1 = tiles[0][tile_x + 1];
 
             RK_U8 leftmost = (tile_x == dxva->tiles.cols - 1);
             if (!not_valid_tile_dimension)
@@ -1589,7 +1608,7 @@ void vdpu_av1d_set_tile_info_mem(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
     mpp_buffer_sync_end(ctx->tile_info);
 }
 
-void vdpu_av1d_set_cdef(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_cdef(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
 {
     RK_U32 luma_pri_strength = 0;
     RK_U16 luma_sec_strength = 0;
@@ -1621,7 +1640,7 @@ void vdpu_av1d_set_cdef(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
     mpp_dev_set_reg_offset(p_hal->dev, 85, ctx->filt_info[CDEF_COL].offset);
 }
 
-void vdpu_av1d_set_lr(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_lr(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
 {
     VdpuAv1dRegCtx *ctx = p_hal->reg_ctx;
     VdpuAv1dRegSet *regs = ctx->regs;
@@ -1639,8 +1658,8 @@ void vdpu_av1d_set_lr(Av1dHalCtx *p_hal, DXVA_PicParams_AV1 *dxva)
     mpp_dev_set_reg_offset(p_hal->dev, 91, ctx->filt_info[LR_COL].offset);
 }
 
-void init_scaling_function(RK_U8 scaling_points[][2], RK_U8 num_points,
-                           RK_U8 scaling_lut[])
+static void init_scaling_function(RK_U8 scaling_points[][2], RK_U8 num_points,
+                                  RK_U8 scaling_lut[])
 {
     RK_S32 i, point;
 
@@ -1668,7 +1687,7 @@ void init_scaling_function(RK_U8 scaling_points[][2], RK_U8 num_points,
         scaling_lut[i] = scaling_points[num_points - 1][1];
 }
 
-void vdpu_av1d_set_fgs(VdpuAv1dRegCtx *ctx, DXVA_PicParams_AV1 *dxva)
+static void vdpu_av1d_set_fgs(VdpuAv1dRegCtx *ctx, DXVA_PicParams_AV1 *dxva)
 {
     VdpuAv1dRegSet *regs = ctx->regs;
     RK_S32 ar_coeffs_y[24];
@@ -2049,8 +2068,8 @@ MPP_RET vdpu_av1d_gen_regs(void *hal, HalTaskInfo *task)
 
     regs->swreg11.sw_mcomp_filt_type    = dxva->interp_filter;
     regs->swreg11.sw_high_prec_mv_e     = dxva->coding.high_precision_mv;
-    regs->swreg11.sw_comp_pred_mode     =  dxva->coding.reference_mode ? 2 : 0;
-    regs->swreg11.sw_transform_mode     = dxva->coding.tx_mode;
+    regs->swreg11.sw_comp_pred_mode     = dxva->coding.reference_mode ? 2 : 0;
+    regs->swreg11.sw_transform_mode     = dxva->coding.tx_mode ? (dxva->coding.tx_mode + 2) : 0;
     regs->swreg12.sw_max_cb_size        = dxva->coding.use_128x128_superblock ? 7 : 6;;
     regs->swreg12.sw_min_cb_size        = 3;
 

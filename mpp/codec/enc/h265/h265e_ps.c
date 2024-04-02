@@ -183,7 +183,7 @@ MPP_RET h265e_set_sps(H265eCtx *ctx, H265eSps *sps, H265eVps *vps)
     MppEncRefCfg ref_cfg = ctx->cfg->ref_cfg;
     MppEncH265VuiCfg *vui = &codec->vui;
     MppFrameFormat fmt = prep->format;
-    RK_S32 i_timebase_num = rc->fps_out_denorm;
+    RK_S32 i_timebase_num = rc->fps_out_denom;
     RK_S32 i_timebase_den = rc->fps_out_num;
     RK_U8  convertToBit[MAX_CU_SIZE + 1];
     RK_U32 maxCUDepth, minCUDepth, addCUDepth;
@@ -205,6 +205,9 @@ MPP_RET h265e_set_sps(H265eCtx *ctx, H265eSps *sps, H265eVps *vps)
     minCUDepth = (codec->max_cu_size >> (maxCUDepth - 1));
 
     tuQTMaxLog2Size = convertToBit[codec->max_cu_size] + 2 - 1;
+    if (mpp_get_soc_type() == ROCKCHIP_SOC_RK3576) {
+        tuQTMaxLog2Size = tuQTMaxLog2Size + 1;
+    }
 
     addCUDepth = 0;
     while ((RK_U32)(codec->max_cu_size >> maxCUDepth) > (1u << (tuQTMinLog2Size + addCUDepth))) {
@@ -321,6 +324,14 @@ MPP_RET h265e_set_sps(H265eCtx *ctx, H265eSps *sps, H265eVps *vps)
     } else if (cpb_info->max_st_tid) {
         sps->m_TMVPFlagsPresent = 0;
     }
+
+    if (rc->drop_mode == MPP_ENC_RC_DROP_FRM_PSKIP) {
+        codec->tmvp_enable = 0;
+        sps->m_TMVPFlagsPresent = 0;
+        codec->sao_enable = 0;
+        sps->m_bUseSAO = 0;
+    }
+
     sps->m_ptl = &vps->m_ptl;
     sps->m_vuiParametersPresentFlag = 1;
     if (sps->m_vuiParametersPresentFlag) {
