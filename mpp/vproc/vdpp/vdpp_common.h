@@ -22,6 +22,8 @@
 #define GET_SCALE_FACTOR_DN(src,dst)      ((((src) - 1) << SCALE_FACTOR_DN_FIXPOINT_SHIFT)  / ((dst) - 1))
 #define GET_SCALE_FACTOR_UP(src,dst)      ((((src) - 1) << SCALE_FACTOR_UP_FIXPOINT_SHIFT)  / ((dst) - 1))
 
+extern const char *working_mode_name[];
+
 enum ZME_FMT {
     FMT_YCbCr420_888    = 4,
     FMT_YCbCr444_888    = 6,
@@ -179,8 +181,6 @@ struct dmsr_reg {
         RK_U32 sw_dmsr_obv_enable   : 1;
         RK_U32 sw_dmsr_obv_mode     : 1;
     } reg20;         /* 0x00D0 */
-
-    RK_U32 reg_dmsr_21_23[3];
 };               /* offset: 0x1080 */
 
 

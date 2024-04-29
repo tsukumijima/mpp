@@ -617,7 +617,7 @@ static MPP_RET set_output_frame(Av1CodecContext *ctx)
         mpp_frame_set_hdr_dynamic_meta(frame, s->hdr_dynamic_meta);
         s->hdr_dynamic = 0;
         if (s->raw_frame_header->show_existing_frame)
-            fill_hdr_meta_to_frame(frame, HDR_AV1);
+            fill_hdr_meta_to_frame(frame, MPP_VIDEO_CodingAV1);
     }
     mpp_frame_set_pts(frame, s->pts);
     mpp_buf_slot_set_flag(s->slots, s->cur_frame.slot_index, SLOT_QUEUE_USE);
@@ -773,9 +773,6 @@ static MPP_RET get_current_frame(Av1CodecContext *ctx)
     mpp_frame_set_discard(frame->f, 0);
     mpp_frame_set_pts(frame->f, s->pts);
 
-    if (s->is_hdr)
-        ctx->pix_fmt |= MPP_FRAME_HDR;
-
     mpp_frame_set_color_trc(frame->f, ctx->color_trc);
     mpp_frame_set_color_primaries(frame->f, ctx->color_primaries);
     mpp_frame_set_colorspace(frame->f, ctx->colorspace);
@@ -787,20 +784,31 @@ static MPP_RET get_current_frame(Av1CodecContext *ctx)
     if (MPP_FRAME_FMT_IS_FBC(s->cfg->base.out_fmt)) {
         mpp_slots_set_prop(s->slots, SLOTS_HOR_ALIGN, hor_align_16);
         if (s->bit_depth == 10) {
-            if (ctx->pix_fmt == MPP_FMT_YUV420SP || ctx->pix_fmt == MPP_FMT_YUV420SP_10BIT)
+            if ((ctx->pix_fmt & MPP_FRAME_FMT_MASK) == MPP_FMT_YUV420SP ||
+                (ctx->pix_fmt & MPP_FRAME_FMT_MASK) == MPP_FMT_YUV420SP_10BIT)
                 ctx->pix_fmt = MPP_FMT_YUV420SP_10BIT;
             else
                 mpp_err("422p 10bit no support");
         }
 
-        mpp_frame_set_fmt(frame->f, ctx->pix_fmt | ((s->cfg->base.out_fmt & (MPP_FRAME_FBC_MASK))));
+        ctx->pix_fmt |= s->cfg->base.out_fmt & (MPP_FRAME_FBC_MASK);
         mpp_frame_set_offset_x(frame->f, 0);
         mpp_frame_set_offset_y(frame->f, 0);
-        mpp_frame_set_ver_stride(frame->f, MPP_ALIGN(ctx->height, 8) + 28);
+        if (mpp_get_soc_type() == ROCKCHIP_SOC_RK3588)
+            mpp_frame_set_ver_stride(frame->f, MPP_ALIGN(ctx->height, 8) + 28);
     } else if (MPP_FRAME_FMT_IS_TILE(s->cfg->base.out_fmt)) {
-        mpp_frame_set_fmt(frame->f, ctx->pix_fmt | ((s->cfg->base.out_fmt & (MPP_FRAME_TILE_FLAG))));
-    } else
-        mpp_frame_set_fmt(frame->f, ctx->pix_fmt);
+        ctx->pix_fmt |= s->cfg->base.out_fmt & (MPP_FRAME_TILE_FLAG);
+    }
+
+    if (s->is_hdr)
+        ctx->pix_fmt |= MPP_FRAME_HDR;
+
+    mpp_frame_set_fmt(frame->f, ctx->pix_fmt);
+
+    if (s->cfg->base.enable_thumbnail && s->hw_info && s->hw_info->cap_down_scale)
+        mpp_frame_set_thumbnail_en(frame->f, s->cfg->base.enable_thumbnail);
+    else
+        mpp_frame_set_thumbnail_en(frame->f, 0);
 
     value = 4;
     mpp_slots_set_prop(s->slots, SLOTS_NUMERATOR, &value);
@@ -858,6 +866,7 @@ MPP_RET av1d_parser_init(Av1CodecContext *ctx, ParserCfg *init)
     s->packet_slots = init->packet_slots;
     s->slots = init->frame_slots;
     s->cfg = init->cfg;
+    s->hw_info = init->hw_info;
     mpp_buf_slot_setup(s->slots, 25);
 
     mpp_env_get_u32("av1d_debug", &av1d_debug, 0);

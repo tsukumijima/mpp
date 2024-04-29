@@ -14,6 +14,7 @@
 #include "mpp_common.h"
 #include "mpp_debug.h"
 #include "mpp_bitput.h"
+#include "mpp_buffer_impl.h"
 
 #include "avs2d_syntax.h"
 #include "vdpu383_com.h"
@@ -69,14 +70,9 @@ typedef struct avs2d_reg_ctx_t {
 
 } Avs2dRkvRegCtx_t;
 
+MPP_RET hal_avs2d_vdpu383_deinit(void *hal);
 static RK_U32 avs2d_ver_align(RK_U32 val)
 {
-    return MPP_ALIGN(val, 16);
-}
-
-static RK_U32 avs2d_hor_align(RK_U32 val)
-{
-
     return MPP_ALIGN(val, 16);
 }
 
@@ -399,6 +395,7 @@ static MPP_RET fill_registers(Avs2dHalCtx_t *p_hal, Vdpu383Avs2dRegSet *regs, Ha
 
                 if (slot_idx < 0) {
                     AVS2D_HAL_TRACE("missing ref, could not found valid ref");
+                    task->dec.flags.ref_err = 1;
                     return ret = MPP_ERR_UNKNOW;
                 }
 
@@ -422,6 +419,19 @@ static MPP_RET fill_registers(Avs2dHalCtx_t *p_hal, Vdpu383Avs2dRegSet *regs, Ha
     AVS2D_HAL_TRACE("packet fd %d from slot %d", regs->common_addr.reg128_strm_base, task_dec->input);
 
     regs->avs2d_paras.reg66_stream_len = MPP_ALIGN(mpp_packet_get_length(task_dec->input_packet), 16) + 64;
+
+    {
+        //scale down config
+        mpp_buf_slot_get_prop(p_hal->frame_slots, task_dec->output,
+                              SLOT_FRAME_PTR, &mframe);
+        if (mpp_frame_get_thumbnail_en(mframe)) {
+            regs->common_addr.reg133_scale_down_base = regs->avs2d_addrs.reg168_decout_base;
+            vdpu383_setup_down_scale(mframe, p_hal->dev, &regs->ctrl_regs,
+                                     (void *)&regs->avs2d_paras);
+        } else {
+            regs->ctrl_regs.reg9.scale_down_en = 0;
+        }
+    }
 
     return ret;
 }
@@ -484,6 +494,7 @@ MPP_RET hal_avs2d_vdpu383_init(void *hal, MppHalCfg *cfg)
     FUN_CHECK(ret = mpp_buffer_get(p_hal->buf_group, &reg_ctx->bufs, AVS2_ALL_TBL_BUF_SIZE(loop)));
     reg_ctx->bufs_fd = mpp_buffer_get_fd(reg_ctx->bufs);
     reg_ctx->bufs_ptr = mpp_buffer_get_ptr(reg_ctx->bufs);
+    mpp_buffer_attach_dev(reg_ctx->bufs, p_hal->dev);
 
     for (i = 0; i < loop; i++) {
         reg_ctx->reg_buf[i].regs = mpp_calloc(Vdpu383Avs2dRegSet, 1);
@@ -498,7 +509,7 @@ MPP_RET hal_avs2d_vdpu383_init(void *hal, MppHalCfg *cfg)
         reg_ctx->sclst_offset = reg_ctx->reg_buf[0].offset_sclst;
     }
 
-    mpp_slots_set_prop(p_hal->frame_slots, SLOTS_HOR_ALIGN, avs2d_hor_align);
+    mpp_slots_set_prop(p_hal->frame_slots, SLOTS_HOR_ALIGN, mpp_align_128_odd_plus_64);
     mpp_slots_set_prop(p_hal->frame_slots, SLOTS_VER_ALIGN, avs2d_ver_align);
     mpp_slots_set_prop(p_hal->frame_slots, SLOTS_LEN_ALIGN, avs2d_len_align);
 
@@ -585,8 +596,6 @@ MPP_RET hal_avs2d_vdpu383_gen_regs(void *hal, HalTaskInfo *task)
     AVS2D_HAL_TRACE("In.");
 
     INP_CHECK(ret, NULL == p_hal);
-    task->dec.flags.parse_err = 0;
-    task->dec.flags.ref_err = 0;
     if (task->dec.flags.parse_err || task->dec.flags.ref_err) {
         ret = MPP_NOK;
         goto __RETURN;
@@ -618,7 +627,7 @@ MPP_RET hal_avs2d_vdpu383_gen_regs(void *hal, HalTaskInfo *task)
 
     regs = reg_ctx->regs;
 
-    prepare_header(p_hal, reg_ctx->shph_dat, sizeof(reg_ctx->shph_dat));
+    prepare_header(p_hal, reg_ctx->shph_dat, sizeof(reg_ctx->shph_dat) / 8);
     prepare_scalist(p_hal, reg_ctx->scalist_dat, sizeof(reg_ctx->scalist_dat));
 
     ret = fill_registers(p_hal, regs, task);
@@ -653,6 +662,7 @@ MPP_RET hal_avs2d_vdpu383_gen_regs(void *hal, HalTaskInfo *task)
     }
 
     vdpu383_setup_statistic(&regs->ctrl_regs);
+    mpp_buffer_sync_end(reg_ctx->bufs);
 
 __RETURN:
     AVS2D_HAL_TRACE("Out. ret %d", ret);
@@ -678,6 +688,8 @@ MPP_RET hal_avs2d_vdpu383_start(void *hal, HalTaskInfo *task)
     reg_ctx = (Avs2dRkvRegCtx_t *)p_hal->reg_ctx;
     regs = p_hal->fast_mode ? reg_ctx->reg_buf[task->dec.reg_index].regs : reg_ctx->regs;
     dev = p_hal->dev;
+
+    p_hal->frame_no++;
 
     do {
         MppDevRegWrCfg wr_cfg;
@@ -862,20 +874,16 @@ MPP_RET hal_avs2d_vdpu383_wait(void *hal, HalTaskInfo *task)
 
         if ((!regs->ctrl_regs.reg15.rkvdec_frame_rdy_sta) ||
             regs->ctrl_regs.reg15.rkvdec_strm_error_sta ||
-            regs->ctrl_regs.reg15.rkvdec_buffer_empty_sta)
+            regs->ctrl_regs.reg15.rkvdec_core_timeout_sta ||
+            regs->ctrl_regs.reg15.rkvdec_ip_timeout_sta ||
+            regs->ctrl_regs.reg15.rkvdec_bus_error_sta ||
+            regs->ctrl_regs.reg15.rkvdec_buffer_empty_sta ||
+            regs->ctrl_regs.reg15.rkvdec_colmv_ref_error_sta)
             param.hard_err = 1;
         else
             param.hard_err = 0;
 
-        // TODO: config refer frame usage check
-        // task->dec.flags.ref_used = regs->statistic.reg266_perf_cnt0;
-
-        // if (task->dec.flags.ref_miss) {
-        //     RK_U32 ref_hw_usage = regs->statistic.reg266_perf_cnt0;
-
-        //     AVS2D_HAL_TRACE("hal frame %d ref miss %x hard_err %d hw_usage %x", p_hal->frame_no,
-        //                     task->dec.flags.ref_miss, param.hard_err, ref_hw_usage);
-        // }
+        task->dec.flags.ref_info_valid = 0;
 
         AVS2D_HAL_TRACE("hal frame %d hard_err= %d", p_hal->frame_no, param.hard_err);
 
@@ -890,3 +898,19 @@ __RETURN:
     AVS2D_HAL_TRACE("Out. ret %d", ret);
     return ret;
 }
+
+const MppHalApi hal_avs2d_vdpu383 = {
+    .name     = "avs2d_vdpu383",
+    .type     = MPP_CTX_DEC,
+    .coding   = MPP_VIDEO_CodingAVS2,
+    .ctx_size = sizeof(Avs2dRkvRegCtx_t),
+    .flag     = 0,
+    .init     = hal_avs2d_vdpu383_init,
+    .deinit   = hal_avs2d_vdpu383_deinit,
+    .reg_gen  = hal_avs2d_vdpu383_gen_regs,
+    .start    = hal_avs2d_vdpu383_start,
+    .wait     = hal_avs2d_vdpu383_wait,
+    .reset    = NULL,
+    .flush    = NULL,
+    .control  = NULL,
+};

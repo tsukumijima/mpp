@@ -851,12 +851,18 @@ MPP_RET Mpp::get_packet_async(MppPacket *packet)
 
     if (mPktOut->list_size()) {
         MppPacket pkt = NULL;
+        MppPacketImpl *impl = NULL;
+        RK_U32 offset;
 
         mPktOut->del_at_head(&pkt, sizeof(pkt));
         mPacketGetCount++;
         notify(MPP_OUTPUT_DEQUEUE);
 
         *packet = pkt;
+
+        impl = (MppPacketImpl *)pkt;
+        offset = (RK_U32)((char *)impl->pos - (char *)impl->data);
+        mpp_buffer_sync_ro_partial_begin(impl->buffer, offset, impl->length);
     } else {
         AutoMutex autoFrameLock(mFrmIn->mutex());
 
@@ -1178,6 +1184,7 @@ MPP_RET Mpp::control_dec(MpiCmd cmd, MppParam param)
     MPP_RET ret = MPP_NOK;
 
     switch (cmd) {
+    case MPP_DEC_GET_THUMBNAIL_FRAME_INFO:
     case MPP_DEC_SET_FRAME_INFO: {
         ret = mpp_dec_control(mDec, cmd, param);
     } break;

@@ -343,6 +343,12 @@ void vdpp_test(VdppTestCfg *cfg)
         vdpp->ops->control(vdpp->priv, VDPP_CMD_SET_COM_CFG, &params);
     }
 
+    {
+        RK_S32 cap = vdpp->ops->check_cap(vdpp->priv);
+
+        mpp_log("vdpp cap %d\n", cap);
+    }
+
     while (1) {
         if (srcfrmsize > fread(psrc, 1, srcfrmsize, cfg->fp_src)) {
             mpp_log("source exhaused\n");
@@ -365,8 +371,13 @@ void vdpp_test(VdppTestCfg *cfg)
 
         memset(pdst, 0, dstfrmsize);
         memset(phist, 0, DCI_HIST_SIZE);
-        vdpp->ops->control(vdpp->priv, VDPP_CMD_RUN_SYNC, NULL);
-        cnt ++;
+
+        if (vdpp->ops->control(vdpp->priv, VDPP_CMD_RUN_SYNC, NULL)) {
+            mpp_err("found vdpp run error, exit!\n");
+            break;
+        }
+
+        cnt++;
 
         if (cfg->fp_dst) {
             if (dstfrmsize > fwrite(pdst, 1, dstfrmsize, cfg->fp_dst)) {

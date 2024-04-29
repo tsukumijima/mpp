@@ -44,6 +44,9 @@ static MppFrameFormat vpu_pic_type_remap_to_mpp(EncInputPictureType type)
     case ENC_INPUT_YUV420_SEMIPLANAR : {
         ret = MPP_FMT_YUV420SP;
     } break;
+    case ENC_INPUT_YUV420_SEMIPLANAR_VU : {
+        ret = MPP_FMT_YUV420SP_VU;
+    } break;
     case ENC_INPUT_YUV422_INTERLEAVED_YUYV : {
         ret = MPP_FMT_YUV422_YUYV;
     } break;
@@ -231,7 +234,8 @@ static int copy_align_raw_buffer_to_dest(RK_U8 *dst, RK_U8 *src, RK_U32 width,
     RK_U8 *dst_v = dst_u + hor_stride * ver_stride / 4;
 
     switch (fmt) {
-    case MPP_FMT_YUV420SP : {
+    case MPP_FMT_YUV420SP :
+    case MPP_FMT_YUV420SP_VU : {
         for (row = 0; row < height; row++) {
             memcpy(dst_buf + row * hor_stride, src_buf + index, width);
             index += width;
@@ -523,7 +527,7 @@ RK_S32 VpuApiLegacy::flush(VpuCodecContext *ctx)
     return 0;
 }
 
-static void setup_VPU_FRAME_from_mpp_frame(VPU_FRAME *vframe, MppFrame mframe)
+static void setup_VPU_FRAME_from_mpp_frame(VpuCodecContext *ctx, VPU_FRAME *vframe, MppFrame mframe)
 {
     MppBuffer buf = mpp_frame_get_buffer(mframe);
     RK_U64 pts  = mpp_frame_get_pts(mframe);
@@ -537,6 +541,7 @@ static void setup_VPU_FRAME_from_mpp_frame(VPU_FRAME *vframe, MppFrame mframe)
     if (buf)
         mpp_buffer_inc_ref(buf);
 
+    vframe->CodingType = ctx->videoCoding;
     vframe->DisplayWidth = mpp_frame_get_width(mframe);
     vframe->DisplayHeight = mpp_frame_get_height(mframe);
     vframe->FrameWidth = mpp_frame_get_hor_stride(mframe);
@@ -624,7 +629,7 @@ static void setup_VPU_FRAME_from_mpp_frame(VPU_FRAME *vframe, MppFrame mframe)
 
 static void setup_video_frame_meta(VideoFrame_t *videoFrame, MppFrame mframe)
 {
-    if (mpp_frame_get_thumbnail_en(mframe)) {
+    if (mpp_frame_get_thumbnail_en(mframe) == MPP_FRAME_THUMBNAIL_MIXED) {
         MppMeta meta = NULL;
         RK_S32 yOffset = 0;
         RK_S32 uvOffset = 0;
@@ -879,7 +884,7 @@ RK_S32 VpuApiLegacy::decode(VpuCodecContext *ctx, VideoPacket_t *pkt, DecoderOut
                 aDecOut->size = sizeof(VPU_FRAME);
             }
 
-            setup_VPU_FRAME_from_mpp_frame(vframe, mframe);
+            setup_VPU_FRAME_from_mpp_frame(ctx, vframe, mframe);
 
             aDecOut->timeUs = mpp_frame_get_pts(mframe);
             frame_count++;
@@ -955,7 +960,7 @@ RK_S32 VpuApiLegacy::decode_sendstream(VideoPacket_t *pkt)
     return MPP_OK;
 }
 
-RK_S32 VpuApiLegacy::decode_getoutframe(DecoderOut_t *aDecOut)
+RK_S32 VpuApiLegacy::decode_getoutframe(VpuCodecContext *ctx, DecoderOut_t *aDecOut)
 {
     RK_S32 ret = 0;
     VPU_FRAME *vframe = NULL;
@@ -996,7 +1001,7 @@ RK_S32 VpuApiLegacy::decode_getoutframe(DecoderOut_t *aDecOut)
             aDecOut->size = sizeof(VPU_FRAME);
         }
 
-        setup_VPU_FRAME_from_mpp_frame(vframe, mframe);
+        setup_VPU_FRAME_from_mpp_frame(ctx, vframe, mframe);
 
         aDecOut->timeUs = mpp_frame_get_pts(mframe);
         frame_count++;
@@ -1100,6 +1105,11 @@ RK_S32 VpuApiLegacy::encode(VpuCodecContext *ctx, EncInputStream_t *aEncInStrm, 
     default: {
         mpp_err("unsupport format 0x%x\n", format & MPP_FRAME_FMT_MASK);
     } break;
+    }
+    mpp_frame_set_fmt(frame, (MppFrameFormat)(format & MPP_FRAME_FMT_MASK));
+    if (aEncInStrm->nFlags) {
+        mpp_log_f("found eos\n");
+        mpp_frame_set_eos(frame, 1);
     }
 
     fd = aEncInStrm->bufPhyAddr;
@@ -1360,7 +1370,7 @@ RK_S32 VpuApiLegacy::encoder_sendframe(VpuCodecContext *ctx, EncInputStream_t *a
         mpp_err("unsupport format 0x%x\n", format & MPP_FRAME_FMT_MASK);
     } break;
     }
-
+    mpp_frame_set_fmt(frame, (MppFrameFormat)(format & MPP_FRAME_FMT_MASK));
     if (aEncInStrm->nFlags) {
         mpp_log_f("found eos true\n");
         mpp_frame_set_eos(frame, 1);
@@ -1402,6 +1412,8 @@ RK_S32 VpuApiLegacy::encoder_sendframe(VpuCodecContext *ctx, EncInputStream_t *a
             goto FUNC_RET;
         }
         if (format >= MPP_FMT_YUV420SP && format < MPP_FMT_YUV_BUTT) {
+            align_size = hor_stride * MPP_ALIGN(ver_stride, 16) * 3 / 2;
+        } else  if (format >= MPP_FMT_YUV420SP_VU && format < MPP_FMT_YUV_BUTT) {
             align_size = hor_stride * MPP_ALIGN(ver_stride, 16) * 3 / 2;
         } else if (format >= MPP_FMT_RGB565 && format < MPP_FMT_BGR888) {
             align_size = hor_stride * MPP_ALIGN(ver_stride, 16) * 3;

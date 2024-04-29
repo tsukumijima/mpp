@@ -30,7 +30,6 @@
 #include "hal_avs2d_vdpu382.h"
 #include "mpp_dec_cb_param.h"
 #include "vdpu382_avs2d.h"
-#include "rk_hdr_meta_com.h"
 
 #define VDPU382_FAST_REG_SET_CNT    (3)
 #define MAX_REF_NUM                 (8)
@@ -79,6 +78,7 @@ typedef struct avs2d_reg_ctx_t {
 
 } Avs2dVdpu382RegCtx_t;
 
+MPP_RET hal_avs2d_vdpu382_deinit(void *hal);
 static RK_U32 avs2d_ver_align(RK_U32 val)
 {
     return MPP_ALIGN(val, 16);
@@ -522,9 +522,6 @@ static MPP_RET fill_registers(Avs2dHalCtx_t *p_hal, Vdpu382Avs2dRegSet *p_regs, 
         p_regs->common_addr.reg129_rlcwrite_base = p_regs->common_addr.reg128_rlc_base;
         common->reg016_str_len = MPP_ALIGN(mpp_packet_get_length(task_dec->input_packet), 16) + 64;
     }
-
-    if (MPP_FRAME_FMT_IS_HDR(mpp_frame_get_fmt(mframe)) && p_hal->cfg->base.enable_hdr_meta)
-        fill_hdr_meta_to_frame(mframe, HDR_AVS2);
 
     /* set scale down info */
     if (mpp_frame_get_thumbnail_en(mframe)) {
@@ -1170,6 +1167,7 @@ MPP_RET hal_avs2d_vdpu382_wait(void *hal, HalTaskInfo *task)
             param.hard_err = 0;
 
         task->dec.flags.ref_used = p_regs->statistic.reg265.link_perf_cnt0;
+        task->dec.flags.ref_info_valid = 1;
 
         if (task->dec.flags.ref_miss) {
             RK_U32 ref_hw_usage = p_regs->statistic.reg265.link_perf_cnt0;
@@ -1192,3 +1190,19 @@ __RETURN:
     AVS2D_HAL_TRACE("Out. ret %d", ret);
     return ret;
 }
+
+const MppHalApi hal_avs2d_vdpu382 = {
+    .name     = "avs2d_vdpu382",
+    .type     = MPP_CTX_DEC,
+    .coding   = MPP_VIDEO_CodingAVS2,
+    .ctx_size = sizeof(Avs2dVdpu382RegCtx_t),
+    .flag     = 0,
+    .init     = hal_avs2d_vdpu382_init,
+    .deinit   = hal_avs2d_vdpu382_deinit,
+    .reg_gen  = hal_avs2d_vdpu382_gen_regs,
+    .start    = hal_avs2d_vdpu382_start,
+    .wait     = hal_avs2d_vdpu382_wait,
+    .reset    = NULL,
+    .flush    = NULL,
+    .control  = NULL,
+};

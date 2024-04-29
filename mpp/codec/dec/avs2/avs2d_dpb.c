@@ -520,7 +520,7 @@ static Avs2dFrame_t *dpb_alloc_frame(Avs2dCtx_t *p_dec, HalDecTask *task)
         mpp_frame_set_fmt(mframe, mpp_frame_get_fmt(mframe) | MPP_FRAME_HDR);
 
     if (p_dec->init.cfg->base.enable_thumbnail && p_dec->init.hw_info->cap_down_scale)
-        mpp_frame_set_thumbnail_en(mframe, 1);
+        mpp_frame_set_thumbnail_en(mframe, p_dec->init.cfg->base.enable_thumbnail);
     else
         mpp_frame_set_thumbnail_en(mframe, 0);
 
@@ -536,6 +536,7 @@ static Avs2dFrame_t *dpb_alloc_frame(Avs2dCtx_t *p_dec, HalDecTask *task)
     if (p_dec->got_exh) {
         mpp_frame_set_color_primaries(mframe, exh->color_primaries);
         mpp_frame_set_color_trc(mframe, exh->transfer_characteristics);
+        mpp_frame_set_colorspace(mframe, exh->matrix_coefficients);
     }
     mpp_frame_set_content_light(mframe, p_dec->content_light);
     mpp_frame_set_mastering_display(mframe, p_dec->display_meta);
@@ -854,6 +855,6 @@ MPP_RET avs2d_dpb_flush(Avs2dCtx_t *p_dec)
     //!< reset dpb management
     dpb_init_management(mgr);
 
-    AVS2D_PARSE_TRACE("In.");
+    AVS2D_PARSE_TRACE("Out.");
     return ret;
 }

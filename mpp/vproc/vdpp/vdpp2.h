@@ -12,6 +12,7 @@
 /* vdpp log marco */
 #define VDPP2_DBG_TRACE             (0x00000001)
 #define VDPP2_DBG_INT               (0x00000002)
+#define VDPP2_DBG_CHECK             (0x00000004)
 
 extern RK_U32 vdpp2_debug;
 
@@ -244,6 +245,7 @@ extern "C" {
 MPP_RET vdpp2_init(VdppCtx *ictx);
 MPP_RET vdpp2_deinit(VdppCtx ictx);
 MPP_RET vdpp2_control(VdppCtx ictx, VdppCmd cmd, void *iparam);
+RK_S32  vdpp2_check_cap(VdppCtx ictx);
 
 #ifdef __cplusplus
 }

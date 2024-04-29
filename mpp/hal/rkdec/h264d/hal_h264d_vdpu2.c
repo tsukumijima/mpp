@@ -39,6 +39,7 @@ const RK_U32 vdpu2_ref_idx[16] = {
     92, 93, 94, 95, 96, 97, 98, 99
 };
 
+MPP_RET vdpu2_h264d_deinit(void *hal);
 static MPP_RET set_device_regs(H264dHalCtx_t *p_hal, H264dVdpuRegs_t *p_reg)
 {
     MPP_RET ret = MPP_ERR_UNKNOW;
@@ -955,15 +956,16 @@ MPP_RET vdpu2_h264d_start(void *hal, HalTaskInfo *task)
     RK_U32 w = p_regs->sw110.pic_mb_w * 16;
     RK_U32 h = p_regs->sw110.pic_mb_h * 16;
     RK_U32 cache_en = 1;
-    const char *soc_name = NULL;
+    RockchipSocType soc_type = mpp_get_soc_type();
 
     if (task->dec.flags.parse_err ||
         task->dec.flags.ref_err) {
         goto __RETURN;
     }
 
-    soc_name = mpp_get_soc_name();
-    if (strstr(soc_name, "rk3326") || strstr(soc_name, "px30") || strstr(soc_name, "rk3228H"))
+    if (soc_type == ROCKCHIP_SOC_RK3326 ||
+        soc_type == ROCKCHIP_SOC_PX30 ||
+        soc_type == ROCKCHIP_SOC_RK3228H)
         cache_en = ((w * h) >= (1280 * 720)) ? 1 : 0;
 
     p_regs->sw57.cache_en       = cache_en;
@@ -1130,3 +1132,19 @@ MPP_RET vdpu2_h264d_control(void *hal, MpiCmd cmd_type, void *param)
 __RETURN:
     return ret = MPP_OK;
 }
+
+const MppHalApi hal_h264d_vdpu2 = {
+    .name     = "h264d_vdpu2",
+    .type     = MPP_CTX_DEC,
+    .coding   = MPP_VIDEO_CodingAVC,
+    .ctx_size = sizeof(H264dVdpuRegCtx_t),
+    .flag     = 0,
+    .init     = vdpu2_h264d_init,
+    .deinit   = vdpu2_h264d_deinit,
+    .reg_gen  = vdpu2_h264d_gen_regs,
+    .start    = vdpu2_h264d_start,
+    .wait     = vdpu2_h264d_wait,
+    .reset    = vdpu2_h264d_reset,
+    .flush    = vdpu2_h264d_flush,
+    .control  = vdpu2_h264d_control,
+};
