@@ -159,23 +159,6 @@ static MPP_RET hal_h265d_vdpu34x_init(void *hal, MppHalCfg *cfg)
         return ret;
     }
 
-    {
-        // report hw_info to parser
-        const MppSocInfo *info = mpp_get_soc_info();
-        const void *hw_info = NULL;
-        RK_U32 i;
-
-        for (i = 0; i < MPP_ARRAY_ELEMS(info->dec_caps); i++) {
-            if (info->dec_caps[i] && info->dec_caps[i]->type == VPU_CLIENT_RKVDEC) {
-                hw_info = info->dec_caps[i];
-                break;
-            }
-        }
-
-        mpp_assert(hw_info);
-        cfg->hw_info = hw_info;
-    }
-
     if (cfg->hal_fbc_adj_cfg) {
         cfg->hal_fbc_adj_cfg->func = vdpu34x_afbc_align_calc;
         cfg->hal_fbc_adj_cfg->expand = 16;
@@ -847,7 +830,6 @@ static void hal_h265d_rcb_info_update(void *hal,  void *dxva,
     }while(0)
 
 #define pocdistance(a, b) (((a) > (b)) ? ((a) - (b)) : ((b) - (a)))
-#define MAX_INT           2147483647
 
 static MPP_RET hal_h265d_vdpu34x_gen_regs(void *hal,  HalTaskInfo *syn)
 {
@@ -864,7 +846,7 @@ static MPP_RET hal_h265d_vdpu34x_gen_regs(void *hal,  HalTaskInfo *syn)
     HalBuf *mv_buf = NULL;
     RK_S32 fd = -1;
     RK_U32 mv_size = 0;
-    RK_S32 distance = MAX_INT;
+    RK_S32 distance = INT_MAX;
     h265d_dxva2_picture_context_t *dxva_cxt =
         (h265d_dxva2_picture_context_t *)syn->dec.syntax.data;
     HalH265dCtx *reg_ctx = ( HalH265dCtx *)hal;

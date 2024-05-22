@@ -629,6 +629,8 @@ MPP_RET Mpp::put_frame(MppFrame frame)
     if (!mInitDone)
         return MPP_ERR_INIT;
 
+    mpp_dbg_pts("%p input frame pts %lld\n", this, mpp_frame_get_pts(frame));
+
     if (mInputTimeout == MPP_POLL_NON_BLOCK) {
         set_io_mode(MPP_IO_MODE_NORMAL);
         return put_frame_async(frame);
@@ -787,7 +789,7 @@ MPP_RET Mpp::get_packet(MppPacket *packet)
 
         mpp_buffer_sync_ro_partial_begin(buf, offset, impl->length);
 
-        mpp_dbg_pts("pts %lld\n", impl->pts);
+        mpp_dbg_pts("%p output packet pts %lld\n", this, impl->pts);
     }
 
     // dump output
@@ -1258,7 +1260,8 @@ MPP_RET Mpp::control_dec(MpiCmd cmd, MppParam param)
     case MPP_DEC_SET_DISABLE_ERROR :
     case MPP_DEC_SET_ENABLE_DEINTERLACE :
     case MPP_DEC_SET_ENABLE_FAST_PLAY :
-    case MPP_DEC_SET_ENABLE_MVC: {
+    case MPP_DEC_SET_ENABLE_MVC :
+    case MPP_DEC_SET_DISABLE_DPB_CHECK: {
         /*
          * These control may be set before mpp_init
          * When this case happen record the config and wait for decoder init
