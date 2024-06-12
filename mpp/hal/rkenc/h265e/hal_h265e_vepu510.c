@@ -23,6 +23,7 @@
 #include "hal_h265e_debug.h"
 #include "hal_h265e_vepu510.h"
 #include "hal_h265e_vepu510_reg.h"
+#include "hal_h265e_stream_amend.h"
 
 #include "vepu5xx_common.h"
 #include "vepu541_common.h"
@@ -1679,7 +1680,7 @@ MPP_RET hal_h265e_v510_gen_regs(void *hal, HalEncTask *task)
         } else {
             i_nal_type    = NAL_TRAIL_R;
         }
-        reg_frm->synt_nal.nal_unit_type    = i_nal_type;
+        reg_frm->synt_nal.nal_unit_type  = syn->sp.temporal_id ?  NAL_TSA_R : i_nal_type;
     }
 
     vepu510_h265_set_hw_address(ctx, reg_frm, task);
@@ -1865,7 +1866,7 @@ static MPP_RET vepu510_h265_set_feedback(H265eV510HalContext *ctx, HalEncTask *e
     fb->qp_sum += elem->st.qp_sum;
     fb->out_strm_size += elem->st.bs_lgth_l32;
     fb->sse_sum += (RK_S64)(elem->st.sse_h32 << 16) +
-                   ((elem->st.st_sse_bsl.sse_l16 >> 16) & 0xffff) ;
+                   (elem->st.st_sse_bsl.sse_l16 & 0xffff);
 
     fb->hw_status = hw_status;
     hal_h265e_dbg_detail("hw_status: 0x%08x", hw_status);
@@ -2189,10 +2190,13 @@ MPP_RET hal_h265e_v510_ret_task(void *hal, HalEncTask *task)
     Vepu510H265eFrmCfg *frm = ctx->frms[task_idx];
     Vepu510H265Fbk *fb = &frm->feedback;
     EncRcTaskInfo *rc_info = &task->rc_task->info;
+    RK_U32 offset = mpp_packet_get_length(enc_task->packet);
 
     hal_h265e_enter();
 
     vepu510_h265_set_feedback(ctx, enc_task);
+    mpp_buffer_sync_partial_begin(enc_task->output, offset, fb->out_strm_size);
+    hal_h265e_amend_temporal_id(task, fb->out_strm_size);
 
     rc_info->sse = fb->sse_sum;
     rc_info->lvl64_inter_num = fb->st_lvl64_inter_num;
