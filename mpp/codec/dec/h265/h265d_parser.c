@@ -1156,6 +1156,7 @@ static RK_S32 mpp_hevc_output_frame(void *ctx, int flush)
     H265dContext_t *h265dctx = (H265dContext_t *)ctx;
     HEVCContext *s = (HEVCContext *)h265dctx->priv_data;
     MppDecCfgSet *cfg = h265dctx->cfg;
+    RK_U32 find_next_ready = 0;
 
     if (cfg->base.fast_out)
         return mpp_hevc_out_dec_order(ctx);
@@ -1201,6 +1202,30 @@ static RK_S32 mpp_hevc_output_frame(void *ctx, int flush)
             h265d_dbg(H265D_DBG_REF,
                       "Output frame with POC %d frame->slot_index = %d\n", frame->poc, frame->slot_index);
 
+            do {
+                find_next_ready = 0;
+                for (i = 0; i < MPP_ARRAY_ELEMS(s->DPB); i++) {
+                    HEVCFrame *frame_next_ready = &s->DPB[i];
+                    if ((frame_next_ready->flags & HEVC_FRAME_FLAG_OUTPUT) &&
+                        frame_next_ready->sequence == s->seq_output) {
+                        if (frame_next_ready->poc == frame->poc + 1) {
+                            find_next_ready = 1;
+                            s->output_frame_idx = i;
+                            frame_next_ready->flags &= ~(HEVC_FRAME_FLAG_OUTPUT);
+                            frame = frame_next_ready;
+                            mpp_buf_slot_set_flag(s->slots, frame->slot_index, SLOT_QUEUE_USE);
+                            mpp_buf_slot_enqueue(s->slots, frame->slot_index, QUEUE_DISPLAY);
+                            h265d_dbg(H265D_DBG_REF,
+                                      "Output frame with POC %d frm_next_ready->slot_index = %d\n",
+                                      frame_next_ready->poc, frame_next_ready->slot_index);
+                            /* release any frames that are now unused */
+                            for (i = 0; i < MPP_ARRAY_ELEMS(s->DPB); i++) {
+                                mpp_hevc_unref_frame(s, &s->DPB[i], 0);
+                            }
+                        }
+                    }
+                }
+            } while (find_next_ready);
 
             return 1;
         }
