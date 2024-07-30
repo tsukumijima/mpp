@@ -155,6 +155,7 @@ static MPP_RET m2vd_parser_init_ctx(M2VDParserContext *ctx, ParserCfg *cfg)
     mpp_buf_slot_setup(ctx->frame_slots, 16);
 
     ctx->initFlag = 0;
+    ctx->info_changed = 0;
 
     /* copy from mpeg2decoder::mpeg2decoder */
     memset(&ctx->Framehead, 0, 3 * sizeof(M2VDFrameHead));
@@ -954,10 +955,21 @@ static int m2vd_decode_seq_header(M2VDParserContext *ctx)
     RK_U32 i;
     RK_S32 pre_frame_rate_code = ctx->seq_head.frame_rate_code;
     BitReadCtx_t *bx = ctx->bitread_ctx;
-    ctx->seq_head.decode_width = m2vd_read_bits(bx, 12);
-    ctx->seq_head.decode_height = m2vd_read_bits(bx, 12);
-    ctx->display_width = ctx->seq_head.decode_width;
-    ctx->display_height = ctx->seq_head.decode_height;
+    RK_U32 width = m2vd_read_bits(bx, 12);
+    RK_U32 height = m2vd_read_bits(bx, 12);
+
+    ctx->display_width = width;
+    ctx->display_height = height;
+
+    height = MPP_ALIGN(height, 16);
+    width = MPP_ALIGN(width, 16);
+
+    if (width != ctx->seq_head.decode_width ||
+        height != ctx->seq_head.decode_height)
+        ctx->info_changed = 1;
+
+    ctx->seq_head.decode_width = width;
+    ctx->seq_head.decode_height = height;
     ctx->seq_head.aspect_ratio_information = m2vd_read_bits(bx, 4);
     ctx->seq_head.frame_rate_code = m2vd_read_bits(bx, 4);
     if (!ctx->frame_period || pre_frame_rate_code != ctx->seq_head.frame_rate_code)
@@ -1098,7 +1110,14 @@ static MPP_RET m2v_update_ref_frame(M2VDParserContext *p, RK_S32 force)
                     mpp_buf_slot_enqueue(p->frame_slots, p->frame_ref0->slot_index, QUEUE_DISPLAY);
                     p->frame_ref0->flags = 0;
                 }
+
+                if (p->info_changed) {
+                    mpp_buf_slot_clr_flag(p->frame_slots, p->frame_ref0->slot_index, SLOT_CODEC_USE);
+                    p->frame_ref0->slot_index = -1;
+                    p->info_changed = 0;
+                }
             }
+
             if (p->frame_ref1->slot_index >= 0) {
                 mpp_buf_slot_clr_flag(p->frame_slots, p->frame_ref1->slot_index, SLOT_CODEC_USE);
                 p->frame_ref1->slot_index = -1;
@@ -1259,8 +1278,6 @@ static MPP_RET m2vd_alloc_frame(M2VDParserContext *ctx)
         pic_head->pre_temporal_reference = pic_head->temporal_reference;
         pic_head->pre_picture_coding_type = pic_head->picture_coding_type;
         ctx->frame_cur->picCodingType = pic_head->picture_coding_type;
-        ctx->seq_head.decode_height = (ctx->seq_head.decode_height + 15) & (~15);
-        ctx->seq_head.decode_width = (ctx->seq_head.decode_width + 15) & (~15);
 
         mpp_frame_set_width(ctx->frame_cur->f, ctx->display_width);
         mpp_frame_set_height(ctx->frame_cur->f, ctx->display_height);
