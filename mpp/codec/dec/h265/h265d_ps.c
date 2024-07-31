@@ -1883,6 +1883,7 @@ RK_S32 mpp_hevc_decode_nal_sps(HEVCContext *s)
 
     return 0;
 __BITREAD_ERR:
+    ret = MPP_ERR_STREAM;
 err:
     mpp_mem_pool_put(s->sps_pool, sps_buf);
     return ret;
@@ -2211,6 +2212,7 @@ int mpp_hevc_decode_nal_pps(HEVCContext *s)
 
     return 0;
 __BITREAD_ERR:
+    ret = MPP_ERR_STREAM;
 err:
     if (pps)
         mpp_hevc_pps_free((RK_U8 *)pps);
