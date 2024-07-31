@@ -142,7 +142,6 @@ int mpp_hevc_decode_short_term_rps(HEVCContext *s, ShortTermRPS *rps,
     RK_U8 rps_predict = 0;
     RK_S32 delta_poc;
     RK_S32 k0 = 0;
-    RK_S32 k1 = 0;
     RK_S32 k  = 0;
     RK_S32 i;
 
@@ -195,8 +194,6 @@ int mpp_hevc_decode_short_term_rps(HEVCContext *s, ShortTermRPS *rps,
                 rps->delta_poc[k] = delta_poc;
                 if (delta_poc < 0)
                     k0++;
-                else
-                    k1++;
                 k++;
             }
         }
