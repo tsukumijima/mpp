@@ -50,6 +50,13 @@ void fill_hdr_meta_to_frame(MppFrame frame, MppCodingType in_type)
         return;
     }
 
+    if (mpp_frame_get_thumbnail_en(frame) == MPP_FRAME_THUMBNAIL_ONLY) {
+        // only for 8K thumbnail downscale to 4K 8bit mode
+        RK_U32 downscale_width = mpp_frame_get_width(frame) / 2;
+        RK_U32 downscale_height = mpp_frame_get_height(frame) / 2;
+
+        off = downscale_width * downscale_height * 3 / 2;
+    }
     off = MPP_ALIGN(off, SZ_4K);
 
     static_size = sizeof(RkMetaHdrHeader) + sizeof(HdrStaticMeta);
@@ -114,15 +121,26 @@ void fill_hdr_meta_to_frame(MppFrame frame, MppCodingType in_type)
          *  hevc trc = 18
          *  avs trc = 14
          * hdr10:
-         *  hevc trc = 16
+         *  hevc/h264 trc = 16
          *  avs trc = 12
          */
-        if ((codec_type == HDR_HEVC && static_meta->color_trc == MPP_FRAME_TRC_ARIB_STD_B67) ||
-            (codec_type == HDR_AVS2 && static_meta->color_trc == MPP_FRAME_TRC_BT2020_10))
-            hdr_format = HLG;
-        if ((codec_type == HDR_HEVC && static_meta->color_trc == MPP_FRAME_TRC_SMPTEST2084) ||
-            (codec_type == HDR_AVS2 && static_meta->color_trc == MPP_FRAME_TRC_BT1361_ECG))
-            hdr_format = HDR10;
+        switch (codec_type) {
+        case HDR_HEVC :
+        case HDR_H264 : {
+            if (static_meta->color_trc == MPP_FRAME_TRC_ARIB_STD_B67)
+                hdr_format = HLG;
+            else if (static_meta->color_trc == MPP_FRAME_TRC_SMPTEST2084)
+                hdr_format = HDR10;
+        } break;
+        case HDR_AVS2 : {
+            if (static_meta->color_trc == MPP_FRAME_TRC_BT2020_10)
+                hdr_format = HLG;
+            else if (static_meta->color_trc == MPP_FRAME_TRC_BT1361_ECG)
+                hdr_format = HDR10;
+        } break;
+        default : {
+        } break;
+        }
     }
     off += hdr_static_meta_header->size;
 

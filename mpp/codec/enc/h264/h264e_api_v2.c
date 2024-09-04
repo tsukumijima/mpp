@@ -101,6 +101,9 @@ static void init_h264e_cfg_set(MppEncCfgSet *cfg, MppClientType type)
     memset(h264, 0, sizeof(*h264));
     h264->profile = H264_PROFILE_BASELINE;
     h264->level = H264_LEVEL_3_1;
+    cfg->tune.scene_mode = MPP_ENC_SCENE_MODE_DEFAULT;
+    cfg->tune.qpmap_en = 0;
+    cfg->tune.vmaf_opt = 0;
 
     switch (type) {
     case VPU_CLIENT_VEPU1 :
@@ -188,6 +191,14 @@ static void init_h264e_cfg_set(MppEncCfgSet *cfg, MppClientType type)
     rc_cfg->fqp_min_p = INT_MAX;
     rc_cfg->fqp_max_i = INT_MAX;
     rc_cfg->fqp_max_p = INT_MAX;
+
+    cfg->tune.lambda_idx_i = 6;
+    cfg->tune.lambda_idx_p = 6;
+    cfg->tune.atl_str = 1;
+    cfg->tune.atr_str_i = 1;
+    cfg->tune.atr_str_p = 1;
+    cfg->tune.anti_flicker_str = 1;
+    cfg->tune.deblur_str = 3;
 }
 
 static void h264e_add_syntax(H264eCtx *ctx, H264eSyntaxType type, void *p)

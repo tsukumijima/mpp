@@ -15,9 +15,13 @@
  */
 
 #include "vepu580_tune.h"
+#include "hal_h265e_vepu580_reg.h"
 
 #define HAL_H265E_DBG_CONTENT           (0x00200000)
 #define hal_h264e_dbg_content(fmt, ...) hal_h264e_dbg_f(HAL_H264E_DBG_CONTENT, fmt, ## __VA_ARGS__)
+
+#define CTU_BASE_CFG_BYTE 64
+#define CTU_QP_CFG_BYTE 192
 
 /*
  * Please follow the configuration below:
@@ -248,14 +252,20 @@ static void vepu580_h265e_tune_reg_patch(void *p)
     RdoAtfCfg* p_rdo_atf;
     RK_U32 scene_motion_flag = tune->ap_motion_flag * 2 + tune->curr_scene_motion_flag;
     MppEncHwCfg *hw = &ctx->cfg->hw;
+    RK_S32 vmaf_opt = ctx->cfg->tune.vmaf_opt;
+    RK_U32 pre_intra_idx = vmaf_opt ? 3 : scene_motion_flag;
+    RK_U32 atf_idx = vmaf_opt ? 3 : scene_motion_flag;
 
     if (scene_motion_flag > 3) {
         mpp_err_f("scene_motion_flag is a wrong value %d\n", scene_motion_flag);
         return;
     }
 
-    memcpy(&reg_wgt->lvl32_intra_CST_WGT0, lvl32_preintra_cst_wgt[scene_motion_flag], sizeof(lvl32_preintra_cst_wgt[scene_motion_flag]));
-    memcpy(&reg_wgt->lvl16_intra_CST_WGT0, lvl16_preintra_cst_wgt[scene_motion_flag], sizeof(lvl16_preintra_cst_wgt[scene_motion_flag]));
+
+    memcpy(&reg_wgt->lvl32_intra_CST_WGT0, lvl32_preintra_cst_wgt[pre_intra_idx],
+           sizeof(lvl32_preintra_cst_wgt[pre_intra_idx]));
+    memcpy(&reg_wgt->lvl16_intra_CST_WGT0, lvl16_preintra_cst_wgt[pre_intra_idx],
+           sizeof(lvl16_preintra_cst_wgt[pre_intra_idx]));
 
     p_rdo_atf_skip = &reg_rdo->rdo_b64_skip_atf;
     p_rdo_atf_skip->rdo_b_cime_thd0.cu_rdo_cime_thd0 = 1;
@@ -263,136 +273,136 @@ static void vepu580_h265e_tune_reg_patch(void *p)
     p_rdo_atf_skip->rdo_b_cime_thd1.cu_rdo_cime_thd2 = 4;
     p_rdo_atf_skip->rdo_b_cime_thd1.cu_rdo_cime_thd3 = 6;
 
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = skip_b64_atf_wgt[scene_motion_flag][0];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt10  = skip_b64_atf_wgt[scene_motion_flag][1];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt11  = skip_b64_atf_wgt[scene_motion_flag][2];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt12  = skip_b64_atf_wgt[scene_motion_flag][3];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt20  = skip_b64_atf_wgt[scene_motion_flag][4];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt21  = skip_b64_atf_wgt[scene_motion_flag][5];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt22  = skip_b64_atf_wgt[scene_motion_flag][6];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt30  = skip_b64_atf_wgt[scene_motion_flag][7];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt31  = skip_b64_atf_wgt[scene_motion_flag][8];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt32  = skip_b64_atf_wgt[scene_motion_flag][9];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt40  = skip_b64_atf_wgt[scene_motion_flag][10];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt41  = skip_b64_atf_wgt[scene_motion_flag][11];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt42  = skip_b64_atf_wgt[scene_motion_flag][12];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = skip_b64_atf_wgt[atf_idx][0];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt10  = skip_b64_atf_wgt[atf_idx][1];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt11  = skip_b64_atf_wgt[atf_idx][2];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt12  = skip_b64_atf_wgt[atf_idx][3];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt20  = skip_b64_atf_wgt[atf_idx][4];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt21  = skip_b64_atf_wgt[atf_idx][5];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt22  = skip_b64_atf_wgt[atf_idx][6];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt30  = skip_b64_atf_wgt[atf_idx][7];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt31  = skip_b64_atf_wgt[atf_idx][8];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt32  = skip_b64_atf_wgt[atf_idx][9];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt40  = skip_b64_atf_wgt[atf_idx][10];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt41  = skip_b64_atf_wgt[atf_idx][11];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt42  = skip_b64_atf_wgt[atf_idx][12];
 
     p_rdo_atf = &reg_rdo->rdo_b32_intra_atf;
     p_rdo_atf->rdo_b_cime_thd0.cu_rdo_cime_thd0 = 24;
     p_rdo_atf->rdo_b_cime_thd0.cu_rdo_cime_thd1 = 48;
     p_rdo_atf->rdo_b_cime_thd1.cu_rdo_cime_thd2 = 64;
-    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = intra_b32_atf_wgt[scene_motion_flag][0];
-    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt01  = intra_b32_atf_wgt[scene_motion_flag][1];
-    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt02  = intra_b32_atf_wgt[scene_motion_flag][2];
-    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt10  = intra_b32_atf_wgt[scene_motion_flag][3];
-    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt11  = intra_b32_atf_wgt[scene_motion_flag][4];
-    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt12  = intra_b32_atf_wgt[scene_motion_flag][5];
-    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt20  = intra_b32_atf_wgt[scene_motion_flag][6];
-    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt21  = intra_b32_atf_wgt[scene_motion_flag][7];
-    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt22  = intra_b32_atf_wgt[scene_motion_flag][8];
-    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt30  = intra_b32_atf_wgt[scene_motion_flag][9];
-    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt31  = intra_b32_atf_wgt[scene_motion_flag][10];
-    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt32  = intra_b32_atf_wgt[scene_motion_flag][11];
+    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = intra_b32_atf_wgt[atf_idx][0];
+    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt01  = intra_b32_atf_wgt[atf_idx][1];
+    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt02  = intra_b32_atf_wgt[atf_idx][2];
+    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt10  = intra_b32_atf_wgt[atf_idx][3];
+    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt11  = intra_b32_atf_wgt[atf_idx][4];
+    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt12  = intra_b32_atf_wgt[atf_idx][5];
+    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt20  = intra_b32_atf_wgt[atf_idx][6];
+    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt21  = intra_b32_atf_wgt[atf_idx][7];
+    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt22  = intra_b32_atf_wgt[atf_idx][8];
+    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt30  = intra_b32_atf_wgt[atf_idx][9];
+    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt31  = intra_b32_atf_wgt[atf_idx][10];
+    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt32  = intra_b32_atf_wgt[atf_idx][11];
 
     p_rdo_atf_skip = &reg_rdo->rdo_b32_skip_atf;
     p_rdo_atf_skip->rdo_b_cime_thd0.cu_rdo_cime_thd0 =  1;
     p_rdo_atf_skip->rdo_b_cime_thd0.cu_rdo_cime_thd1 =  2;
     p_rdo_atf_skip->rdo_b_cime_thd1.cu_rdo_cime_thd2 =  4;
     p_rdo_atf_skip->rdo_b_cime_thd1.cu_rdo_cime_thd3 =  6;
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  =  skip_b32_atf_wgt[scene_motion_flag][0];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt10  =  skip_b32_atf_wgt[scene_motion_flag][1];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt11  =  skip_b32_atf_wgt[scene_motion_flag][2];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt12  =  skip_b32_atf_wgt[scene_motion_flag][3];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt20  =  skip_b32_atf_wgt[scene_motion_flag][4];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt21  =  skip_b32_atf_wgt[scene_motion_flag][5];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt22  =  skip_b32_atf_wgt[scene_motion_flag][6];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt30  =  skip_b32_atf_wgt[scene_motion_flag][7];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt31  =  skip_b32_atf_wgt[scene_motion_flag][8];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt32  =  skip_b32_atf_wgt[scene_motion_flag][9];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt40  =  skip_b32_atf_wgt[scene_motion_flag][10];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt41  =  skip_b32_atf_wgt[scene_motion_flag][11];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt42  =  skip_b32_atf_wgt[scene_motion_flag][12];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  =  skip_b32_atf_wgt[atf_idx][0];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt10  =  skip_b32_atf_wgt[atf_idx][1];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt11  =  skip_b32_atf_wgt[atf_idx][2];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt12  =  skip_b32_atf_wgt[atf_idx][3];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt20  =  skip_b32_atf_wgt[atf_idx][4];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt21  =  skip_b32_atf_wgt[atf_idx][5];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt22  =  skip_b32_atf_wgt[atf_idx][6];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt30  =  skip_b32_atf_wgt[atf_idx][7];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt31  =  skip_b32_atf_wgt[atf_idx][8];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt32  =  skip_b32_atf_wgt[atf_idx][9];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt40  =  skip_b32_atf_wgt[atf_idx][10];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt41  =  skip_b32_atf_wgt[atf_idx][11];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt42  =  skip_b32_atf_wgt[atf_idx][12];
 
     p_rdo_atf = &reg_rdo->rdo_b16_intra_atf;
     p_rdo_atf->rdo_b_cime_thd0.cu_rdo_cime_thd0 = 24;
     p_rdo_atf->rdo_b_cime_thd0.cu_rdo_cime_thd1 = 48;
     p_rdo_atf->rdo_b_cime_thd1.cu_rdo_cime_thd2 = 64;
-    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = intra_b16_atf_wgt[scene_motion_flag][0];
-    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt01  = intra_b16_atf_wgt[scene_motion_flag][1];
-    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt02  = intra_b16_atf_wgt[scene_motion_flag][2];
-    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt10  = intra_b16_atf_wgt[scene_motion_flag][3];
-    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt11  = intra_b16_atf_wgt[scene_motion_flag][4];
-    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt12  = intra_b16_atf_wgt[scene_motion_flag][5];
-    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt20  = intra_b16_atf_wgt[scene_motion_flag][6];
-    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt21  = intra_b16_atf_wgt[scene_motion_flag][7];
-    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt22  = intra_b16_atf_wgt[scene_motion_flag][8];
-    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt30  = intra_b16_atf_wgt[scene_motion_flag][9];
-    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt31  = intra_b16_atf_wgt[scene_motion_flag][10];
-    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt32  = intra_b16_atf_wgt[scene_motion_flag][11];
+    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = intra_b16_atf_wgt[atf_idx][0];
+    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt01  = intra_b16_atf_wgt[atf_idx][1];
+    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt02  = intra_b16_atf_wgt[atf_idx][2];
+    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt10  = intra_b16_atf_wgt[atf_idx][3];
+    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt11  = intra_b16_atf_wgt[atf_idx][4];
+    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt12  = intra_b16_atf_wgt[atf_idx][5];
+    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt20  = intra_b16_atf_wgt[atf_idx][6];
+    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt21  = intra_b16_atf_wgt[atf_idx][7];
+    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt22  = intra_b16_atf_wgt[atf_idx][8];
+    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt30  = intra_b16_atf_wgt[atf_idx][9];
+    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt31  = intra_b16_atf_wgt[atf_idx][10];
+    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt32  = intra_b16_atf_wgt[atf_idx][11];
 
     p_rdo_atf_skip = &reg_rdo->rdo_b16_skip_atf;
     p_rdo_atf_skip->rdo_b_cime_thd0.cu_rdo_cime_thd0 = 1;
     p_rdo_atf_skip->rdo_b_cime_thd0.cu_rdo_cime_thd1 = 2;
     p_rdo_atf_skip->rdo_b_cime_thd1.cu_rdo_cime_thd2 = 4;
     p_rdo_atf_skip->rdo_b_cime_thd1.cu_rdo_cime_thd3 = 6;
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = skip_b16_atf_wgt[scene_motion_flag][0];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt10  = skip_b16_atf_wgt[scene_motion_flag][1];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt11  = skip_b16_atf_wgt[scene_motion_flag][2];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt12  = skip_b16_atf_wgt[scene_motion_flag][3];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt20  = skip_b16_atf_wgt[scene_motion_flag][4];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt21  = skip_b16_atf_wgt[scene_motion_flag][5];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt22  = skip_b16_atf_wgt[scene_motion_flag][6];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt30  = skip_b16_atf_wgt[scene_motion_flag][7];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt31  = skip_b16_atf_wgt[scene_motion_flag][8];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt32  = skip_b16_atf_wgt[scene_motion_flag][9];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt40  = skip_b16_atf_wgt[scene_motion_flag][10];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt41  = skip_b16_atf_wgt[scene_motion_flag][11];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt42  = skip_b16_atf_wgt[scene_motion_flag][12];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = skip_b16_atf_wgt[atf_idx][0];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt10  = skip_b16_atf_wgt[atf_idx][1];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt11  = skip_b16_atf_wgt[atf_idx][2];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt12  = skip_b16_atf_wgt[atf_idx][3];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt20  = skip_b16_atf_wgt[atf_idx][4];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt21  = skip_b16_atf_wgt[atf_idx][5];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt22  = skip_b16_atf_wgt[atf_idx][6];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt30  = skip_b16_atf_wgt[atf_idx][7];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt31  = skip_b16_atf_wgt[atf_idx][8];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt32  = skip_b16_atf_wgt[atf_idx][9];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt40  = skip_b16_atf_wgt[atf_idx][10];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt41  = skip_b16_atf_wgt[atf_idx][11];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt42  = skip_b16_atf_wgt[atf_idx][12];
 
     p_rdo_atf = &reg_rdo->rdo_b8_intra_atf;
     p_rdo_atf->rdo_b_cime_thd0.cu_rdo_cime_thd0 = 24;
     p_rdo_atf->rdo_b_cime_thd0.cu_rdo_cime_thd1 = 48;
     p_rdo_atf->rdo_b_cime_thd1.cu_rdo_cime_thd2 = 64;
-    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = intra_b8_atf_wgt[scene_motion_flag][0];
-    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt01  = intra_b8_atf_wgt[scene_motion_flag][1];
-    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt02  = intra_b8_atf_wgt[scene_motion_flag][2];
-    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt10  = intra_b8_atf_wgt[scene_motion_flag][3];
-    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt11  = intra_b8_atf_wgt[scene_motion_flag][4];
-    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt12  = intra_b8_atf_wgt[scene_motion_flag][5];
-    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt20  = intra_b8_atf_wgt[scene_motion_flag][6];
-    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt21  = intra_b8_atf_wgt[scene_motion_flag][7];
-    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt22  = intra_b8_atf_wgt[scene_motion_flag][8];
-    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt30  = intra_b8_atf_wgt[scene_motion_flag][9];
-    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt31  = intra_b8_atf_wgt[scene_motion_flag][10];
-    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt32  = intra_b8_atf_wgt[scene_motion_flag][11];
+    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = intra_b8_atf_wgt[atf_idx][0];
+    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt01  = intra_b8_atf_wgt[atf_idx][1];
+    p_rdo_atf->rdo_b_atf_wgt0.cu_rdo_atf_wgt02  = intra_b8_atf_wgt[atf_idx][2];
+    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt10  = intra_b8_atf_wgt[atf_idx][3];
+    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt11  = intra_b8_atf_wgt[atf_idx][4];
+    p_rdo_atf->rdo_b_atf_wgt1.cu_rdo_atf_wgt12  = intra_b8_atf_wgt[atf_idx][5];
+    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt20  = intra_b8_atf_wgt[atf_idx][6];
+    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt21  = intra_b8_atf_wgt[atf_idx][7];
+    p_rdo_atf->rdo_b_atf_wgt2.cu_rdo_atf_wgt22  = intra_b8_atf_wgt[atf_idx][8];
+    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt30  = intra_b8_atf_wgt[atf_idx][9];
+    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt31  = intra_b8_atf_wgt[atf_idx][10];
+    p_rdo_atf->rdo_b_atf_wgt3.cu_rdo_atf_wgt32  = intra_b8_atf_wgt[atf_idx][11];
 
     p_rdo_atf_skip = &reg_rdo->rdo_b8_skip_atf;
     p_rdo_atf_skip->rdo_b_cime_thd0.cu_rdo_cime_thd0 = 1;
     p_rdo_atf_skip->rdo_b_cime_thd0.cu_rdo_cime_thd1 = 2;
     p_rdo_atf_skip->rdo_b_cime_thd1.cu_rdo_cime_thd2 = 4;
     p_rdo_atf_skip->rdo_b_cime_thd1.cu_rdo_cime_thd3 = 6;
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = skip_b8_atf_wgt[scene_motion_flag][0];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt10  = skip_b8_atf_wgt[scene_motion_flag][1];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt11  = skip_b8_atf_wgt[scene_motion_flag][2];
-    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt12  = skip_b8_atf_wgt[scene_motion_flag][3];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt20  = skip_b8_atf_wgt[scene_motion_flag][4];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt21  = skip_b8_atf_wgt[scene_motion_flag][5];
-    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt22  = skip_b8_atf_wgt[scene_motion_flag][6];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt30  = skip_b8_atf_wgt[scene_motion_flag][7];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt31  = skip_b8_atf_wgt[scene_motion_flag][8];
-    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt32  = skip_b8_atf_wgt[scene_motion_flag][9];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt40  = skip_b8_atf_wgt[scene_motion_flag][10];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt41  = skip_b8_atf_wgt[scene_motion_flag][11];
-    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt42  = skip_b8_atf_wgt[scene_motion_flag][12];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt00  = skip_b8_atf_wgt[atf_idx][0];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt10  = skip_b8_atf_wgt[atf_idx][1];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt11  = skip_b8_atf_wgt[atf_idx][2];
+    p_rdo_atf_skip->rdo_b_atf_wgt0.cu_rdo_atf_wgt12  = skip_b8_atf_wgt[atf_idx][3];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt20  = skip_b8_atf_wgt[atf_idx][4];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt21  = skip_b8_atf_wgt[atf_idx][5];
+    p_rdo_atf_skip->rdo_b_atf_wgt1.cu_rdo_atf_wgt22  = skip_b8_atf_wgt[atf_idx][6];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt30  = skip_b8_atf_wgt[atf_idx][7];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt31  = skip_b8_atf_wgt[atf_idx][8];
+    p_rdo_atf_skip->rdo_b_atf_wgt2.cu_rdo_atf_wgt32  = skip_b8_atf_wgt[atf_idx][9];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt40  = skip_b8_atf_wgt[atf_idx][10];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt41  = skip_b8_atf_wgt[atf_idx][11];
+    p_rdo_atf_skip->rdo_b_atf_wgt3.cu_rdo_atf_wgt42  = skip_b8_atf_wgt[atf_idx][12];
 
     reg_rdo->preintra_b32_cst_wgt.pre_intra32_cst_wgt00 = pre_intra_b32_cost[scene_motion_flag][0];
     reg_rdo->preintra_b32_cst_wgt.pre_intra32_cst_wgt01 = pre_intra_b32_cost[scene_motion_flag][1];
     reg_rdo->preintra_b16_cst_wgt.pre_intra16_cst_wgt00 = pre_intra_b16_cost[scene_motion_flag][0];
     reg_rdo->preintra_b16_cst_wgt.pre_intra16_cst_wgt01 = pre_intra_b16_cost[scene_motion_flag][1];
 
-    rc_regs->md_sad_thd.md_sad_thd0 = 4;
-    rc_regs->md_sad_thd.md_sad_thd1 = 9;
-    rc_regs->md_sad_thd.md_sad_thd2 = 15;
+    rc_regs->md_sad_thd.md_sad_thd0 = 7;
+    rc_regs->md_sad_thd.md_sad_thd1 = 15;
+    rc_regs->md_sad_thd.md_sad_thd2 = 25;
     rc_regs->madi_thd.madi_thd0     = 4;
     rc_regs->madi_thd.madi_thd1     = 9;
     rc_regs->madi_thd.madi_thd2     = 15;
@@ -411,8 +421,8 @@ static void vepu580_h265e_tune_reg_patch(void *p)
         reg_wgt->fme_sqi_thd1.move_lambda = 8;
     }
 
-    reg_rdo->rdo_sqi_cfg.rdo_segment_en = !tune->curr_scene_motion_flag;
-    reg_rdo->rdo_sqi_cfg.rdo_smear_en = !tune->curr_scene_motion_flag;
+    reg_rdo->rdo_sqi_cfg.rdo_segment_en = vmaf_opt ? 0 : !tune->curr_scene_motion_flag;
+    reg_rdo->rdo_sqi_cfg.rdo_smear_en = vmaf_opt ? 0 : !tune->curr_scene_motion_flag;
 
     reg_wgt->i16_sobel_a_00.intra_l16_sobel_a0_qp0 = intra_lvl16_sobel_a[scene_motion_flag][0];
     reg_wgt->i16_sobel_a_00.intra_l16_sobel_a0_qp1 = intra_lvl16_sobel_a[scene_motion_flag][1];
@@ -453,8 +463,8 @@ static void vepu580_h265e_tune_reg_patch(void *p)
     reg_wgt->i32_sobel_c.intra_l32_sobel_c1_qp4 = intra_lvl32_sobel_c[scene_motion_flag][4];
 
     if (hw->qbias_en) {
-        reg_wgt->reg1484_qnt_bias_comb.qnt_bias_i = hw->qbias_i;
-        reg_wgt->reg1484_qnt_bias_comb.qnt_bias_p = hw->qbias_p;
+        reg_wgt->reg1484_qnt_bias_comb.qnt_bias_i = hw->qbias_i ? hw->qbias_i : 171;
+        reg_wgt->reg1484_qnt_bias_comb.qnt_bias_p = hw->qbias_p ? hw->qbias_p : 85;
     } else {
         reg_wgt->reg1484_qnt_bias_comb.qnt_bias_i = qnt_bias_i[scene_motion_flag];
         reg_wgt->reg1484_qnt_bias_comb.qnt_bias_p = qnt_bias_p[scene_motion_flag];
@@ -464,9 +474,10 @@ static void vepu580_h265e_tune_reg_patch(void *p)
     reg_wgt->fme_sqi_thd0.cime_sad_pu32_th = fme_sqi_cime_sad_pu32_th[scene_motion_flag];
     reg_wgt->fme_sqi_thd1.cime_sad_pu64_th = fme_sqi_cime_sad_pu64_th[scene_motion_flag];
     rc_regs->klut_ofst.chrm_klut_ofst = chrm_klut_ofst[scene_motion_flag];
+
 }
 
-static void vepu580_h265e_tune_stat_update(void *p)
+static void vepu580_h265e_tune_stat_update(void *p, EncRcTaskInfo *rc_info)
 {
     HalH265eVepu580Tune *tune = (HalH265eVepu580Tune *)p;
     H265eV580HalContext *ctx = NULL;
@@ -503,9 +514,16 @@ static void vepu580_h265e_tune_stat_update(void *p)
     RK_S32 nScore = 0;
     RK_S32 nScoreT = ((MD_WIN_LEN - 2) * 6 + 2 * 8 + 2 * 11 + 2 * 13) / 2;
     RK_S32 madp_cnt_statistics[5];
+    RK_U32 md_cnt = (24 * fb->st_md_sad_b16num3 + 22 * fb->st_md_sad_b16num2 + 17 *
+                     fb->st_md_sad_b16num1) >> 2;
+    RK_U32 madi_cnt = (6 * fb->st_madi_b16num3 + 5 * fb->st_madi_b16num2 + 4 *
+                       fb->st_madi_b16num1) >> 2;
+    RK_U32 mbs = ((ctx->cfg->prep.width + 15) / 16) * ((ctx->cfg->prep.height + 15) / 16);
     for (i = 0; i < 5; i++) {
-        madp_cnt_statistics[i] = fb->st_md_sad_b16num0 * madp_num_map[i][0] + fb->st_md_sad_b16num1 * madp_num_map[i][1]
-                                 + fb->st_md_sad_b16num2 * madp_num_map[i][2] + fb->st_md_sad_b16num3 * madp_num_map[i][3];
+        madp_cnt_statistics[i] = fb->st_md_sad_b16num0 * madp_num_map[i][0] +
+                                 fb->st_md_sad_b16num1 * madp_num_map[i][1] +
+                                 fb->st_md_sad_b16num2 * madp_num_map[i][2] +
+                                 fb->st_md_sad_b16num3 * madp_num_map[i][3];
     }
 
     tune->pre_madi[0] = fb->st_madi;
@@ -558,7 +576,8 @@ static void vepu580_h265e_tune_stat_update(void *p)
     tune->curr_scene_motion_flag = 0;
     if (tune->md_flag_matrix[0] && tune->md_flag_matrix[1] && tune->md_flag_matrix[2]) {
         tune->curr_scene_motion_flag = 1;
-    } else if ((tune->md_flag_matrix[0] && tune->md_flag_matrix[1]) || (tune->md_flag_matrix[1] && tune->md_flag_matrix[2] && tune->md_flag_matrix[3])) {
+    } else if ((tune->md_flag_matrix[0] && tune->md_flag_matrix[1]) ||
+               (tune->md_flag_matrix[1] && tune->md_flag_matrix[2] && tune->md_flag_matrix[3])) {
         tune->curr_scene_motion_flag = md_flag;
     }
 
@@ -580,4 +599,73 @@ static void vepu580_h265e_tune_stat_update(void *p)
 
     tune->pre_madi[1] = tune->pre_madi[0];
     tune->pre_madp[1] = tune->pre_madp[0];
+
+    rc_info->motion_level = 0;
+    if (md_cnt * 100 > 15 * mbs)
+        rc_info->motion_level = 2;
+    else if (md_cnt * 100 > 5 * mbs)
+        rc_info->motion_level = 1;
+    else
+        rc_info->motion_level = 0;
+
+    rc_info->complex_level = 0;
+    if (madi_cnt * 100 > 30 * mbs)
+        rc_info->complex_level = 2;
+    else if (madi_cnt * 100 > 13 * mbs)
+        rc_info->complex_level = 1;
+    else
+        rc_info->complex_level = 0;
+    hal_h265e_dbg_detail("motion_level = %u, complex_level = %u\n", rc_info->motion_level,
+                         rc_info->complex_level);
+}
+
+static MPP_RET vepu580_setup_qpmap_buf(H265eV580HalContext *ctx)
+{
+    MPP_RET ret = MPP_OK;
+    RK_S32 w = ctx->cfg->prep.width;
+    RK_S32 h = ctx->cfg->prep.height;
+    RK_S32 ctu_w = MPP_ALIGN(w, 64) / 64;
+    RK_S32 ctu_h = MPP_ALIGN(h, 64) / 64;
+    RK_S32 qpmap_base_cfg_size   = ctx->qpmap_base_cfg_size
+                                   = ctu_w * ctu_h * 64;
+    RK_S32 qpmap_qp_cfg_size     = ctx->qpmap_qp_cfg_size
+                                   = ctu_w * ctu_h * 192;
+    RK_S32 md_flag_size = ctx->md_flag_size
+                          = ctu_w * ctu_h * 16;
+
+    if (!ctx->cfg->tune.qpmap_en) {
+        mpp_log("qpmap_en is closed!\n");
+        goto __RET;
+    }
+
+    if (NULL == ctx->qpmap_base_cfg_buf) {
+        mpp_buffer_get(NULL, &ctx->qpmap_base_cfg_buf, qpmap_base_cfg_size);
+        if (!ctx->qpmap_base_cfg_buf) {
+            mpp_err("qpmap_base_cfg_buf malloc fail, qpmap invalid\n");
+            ret = MPP_ERR_VALUE;
+            goto __RET;
+        }
+    }
+
+    if (NULL == ctx->qpmap_qp_cfg_buf) {
+        mpp_buffer_get(NULL, &ctx->qpmap_qp_cfg_buf, qpmap_qp_cfg_size);
+        if (!ctx->qpmap_qp_cfg_buf) {
+            mpp_err("qpmap_qp_cfg_buf malloc fail, qpmap invalid\n");
+            ret = MPP_ERR_VALUE;
+            goto __RET;
+        }
+    }
+
+    if (NULL == ctx->md_flag_buf) {
+        ctx->md_flag_buf = mpp_malloc(RK_U8, md_flag_size);
+        if (!ctx->md_flag_buf) {
+            mpp_err("md_flag_buf malloc fail, qpmap invalid\n");
+            ret = MPP_ERR_VALUE;
+            goto __RET;
+        }
+    }
+
+__RET:
+    hal_h265e_dbg_func("leave, ret %d\n", ret);
+    return ret;
 }

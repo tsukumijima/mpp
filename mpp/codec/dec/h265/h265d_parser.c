@@ -750,7 +750,7 @@ static RK_S32 hls_slice_header(HEVCContext *s)
     }
     s->pps = (HEVCPPS*)s->pps_list[sh->pps_id];
 
-    if (s->sps != (HEVCSPS*)s->sps_list[s->pps->sps_id]) {
+    if (s->ps_need_upate || s->sps != (HEVCSPS*)s->sps_list[s->pps->sps_id]) {
         s->sps = (HEVCSPS*)s->sps_list[s->pps->sps_id];
         mpp_hevc_clear_refs(s);
 
@@ -2029,6 +2029,7 @@ MPP_RET h265d_parse(void *ctx, HalDecTask *task)
         s->task->syntax.data = s->hal_pic_private;
         s->task->syntax.number = 1;
         s->task->valid = 1;
+        s->ps_need_upate = 0;
     }
     if (s->eos) {
         h265d_flush(ctx);

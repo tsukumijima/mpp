@@ -142,7 +142,6 @@ int mpp_hevc_decode_short_term_rps(HEVCContext *s, ShortTermRPS *rps,
     RK_U8 rps_predict = 0;
     RK_S32 delta_poc;
     RK_S32 k0 = 0;
-    RK_S32 k1 = 0;
     RK_S32 k  = 0;
     RK_S32 i;
 
@@ -195,8 +194,6 @@ int mpp_hevc_decode_short_term_rps(HEVCContext *s, ShortTermRPS *rps,
                 rps->delta_poc[k] = delta_poc;
                 if (delta_poc < 0)
                     k0++;
-                else
-                    k1++;
                 k++;
             }
         }
@@ -1579,8 +1576,16 @@ RK_S32 mpp_hevc_decode_nal_sps(HEVCContext *s)
         }
     }
 
-    if ((s->picture_struct == MPP_PICTURE_STRUCTURE_TOP_FIELD) ||
-        (s->picture_struct == MPP_PICTURE_STRUCTURE_BOTTOM_FIELD)) {
+    /* According to T-REC-H.265 Chapter 7.4.4:
+     * If general_progressive_source_flag is equal to 0 and general_interlaced_source_flag is equal to 1, the
+     * source scan type of the pictures in the CVS should be interpreted as interlaced only.
+     * But the actual scan type is depending on encoder's behavior and out of this specification.
+     */
+    h265d_dbg(H265D_DBG_SPS, "sps progressive: %d, interlaced: %d\n",
+              sps->ptl.general_ptl.progressive_source_flag,
+              sps->ptl.general_ptl.interlaced_source_flag);
+    if (!sps->ptl.general_ptl.progressive_source_flag &&
+        sps->ptl.general_ptl.interlaced_source_flag) {
         for (i = 0; i < sps->max_sub_layers; i++) {
             sps->temporal_layer[i].num_reorder_pics += 2;
         }
@@ -1883,6 +1888,7 @@ RK_S32 mpp_hevc_decode_nal_sps(HEVCContext *s)
 
     return 0;
 __BITREAD_ERR:
+    ret = MPP_ERR_STREAM;
 err:
     mpp_mem_pool_put(s->sps_pool, sps_buf);
     return ret;
@@ -2211,6 +2217,7 @@ int mpp_hevc_decode_nal_pps(HEVCContext *s)
 
     return 0;
 __BITREAD_ERR:
+    ret = MPP_ERR_STREAM;
 err:
     if (pps)
         mpp_hevc_pps_free((RK_U8 *)pps);

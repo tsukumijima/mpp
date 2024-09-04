@@ -184,6 +184,7 @@ typedef struct EncRcCommonInfo_t {
 
     /* rc to hal */
     RK_S32          bit_target;
+    RK_S32          bit_target_fix;
     RK_S32          bit_max;
     RK_S32          bit_min;
 
@@ -209,7 +210,16 @@ typedef struct EncRcCommonInfo_t {
     RK_U32          lvl8_intra_num;
     RK_U32          lvl4_intra_num;
 
-    RK_S32          reserve[5];
+    RK_U32          motion_level;
+    RK_U32          complex_level;
+    RK_S32          complex_scene;
+    RK_S32          scene_mode;
+    RK_S32          last_scene_mode;
+
+    /* rc stats info: real time bits */
+    RK_S32          rt_bits;
+
+    RK_S32          reserve[4];
 } EncRcTaskInfo;
 
 typedef struct EncRcTask_s {

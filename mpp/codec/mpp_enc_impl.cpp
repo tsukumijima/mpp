@@ -681,6 +681,9 @@ MPP_RET mpp_enc_proc_rc_cfg(MppCodingType coding, MppEncRcCfg *dst, MppEncRcCfg 
             dst->refresh_num = src->refresh_num;
         }
 
+        if (change & MPP_ENC_RC_CFG_CHANGE_QPDD)
+            dst->cu_qp_delta_depth = src->cu_qp_delta_depth;
+
         // parameter checking
         if (dst->rc_mode >= MPP_ENC_RC_MODE_BUTT) {
             mpp_err("invalid rc mode %d should be RC_MODE_VBR or RC_MODE_CBR\n",
@@ -859,8 +862,107 @@ MPP_RET mpp_enc_proc_tune_cfg(MppEncFineTuneCfg *dst, MppEncFineTuneCfg *src)
 
         if (dst->scene_mode < MPP_ENC_SCENE_MODE_DEFAULT ||
             dst->scene_mode >= MPP_ENC_SCENE_MODE_BUTT) {
-            mpp_err("invalid scene mode %d not in range [%d:%d]\n", dst->scene_mode,
+            mpp_err("invalid scene mode %d not in range [%d, %d]\n", dst->scene_mode,
                     MPP_ENC_SCENE_MODE_DEFAULT, MPP_ENC_SCENE_MODE_BUTT - 1);
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_DEBLUR_EN)
+            dst->deblur_en = src->deblur_en;
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_DEBLUR_STR)
+            dst->deblur_str = src->deblur_str;
+
+        if (dst->deblur_str < 0 || dst->deblur_str > 7) {
+            mpp_err("invalid deblur strength not in range [0, 7]\n");
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_ANTI_FLICKER_STR)
+            dst->anti_flicker_str = src->anti_flicker_str;
+
+        if (dst->anti_flicker_str < 0 || dst->anti_flicker_str > 3) {
+            mpp_err("invalid anti_flicker_str not in range [0 : 3]\n");
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_ATR_STR_I)
+            dst->atr_str_i = src->atr_str_i;
+
+        if (dst->atr_str_i < 0 || dst->atr_str_i > 3) {
+            mpp_err("invalid atr_str not in range [0 : 3]\n");
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_ATR_STR_P)
+            dst->atr_str_p = src->atr_str_p;
+
+        if (dst->atr_str_p < 0 || dst->atr_str_p > 3) {
+            mpp_err("invalid atr_str not in range [0 : 3]\n");
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_ATL_STR)
+            dst->atl_str = src->atl_str;
+
+        if (dst->atl_str < 0 || dst->atl_str > 3) {
+            mpp_err("invalid atr_str not in range [0 : 3]\n");
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_SAO_STR_I)
+            dst->sao_str_i = src->sao_str_i;
+
+        if (dst->sao_str_i < 0 || dst->sao_str_i > 3) {
+            mpp_err("invalid atr_str not in range [0 : 3]\n");
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_SAO_STR_P)
+            dst->sao_str_p = src->sao_str_p;
+
+        if (dst->sao_str_p < 0 || dst->sao_str_p > 3) {
+            mpp_err("invalid atr_str not in range [0 : 3]\n");
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_LAMBDA_IDX_I)
+            dst->lambda_idx_i = src->lambda_idx_i;
+
+        if (dst->lambda_idx_i < 0 || dst->lambda_idx_i > 8) {
+            mpp_err("invalid lambda idx i not in range [0, 8]\n");
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_LAMBDA_IDX_P)
+            dst->lambda_idx_p = src->lambda_idx_p;
+
+        if (dst->lambda_idx_p < 0 || dst->lambda_idx_p > 8) {
+            mpp_err("invalid lambda idx i not in range [0, 8]\n");
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_QPMAP_EN)
+            dst->qpmap_en = src->qpmap_en;
+
+        if (dst->qpmap_en < 0 || dst->qpmap_en > 1) {
+            mpp_err("invalid qpmap_en %d not in range [0, 1]\n", dst->qpmap_en);
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_RC_CONTAINER)
+            dst->rc_container = src->rc_container;
+
+        if (dst->rc_container < 0 || dst->rc_container > 2) {
+            mpp_err("invalid rc_container %d not in range [0, 2]\n", dst->rc_container);
+            ret = MPP_ERR_VALUE;
+        }
+
+        if (change & MPP_ENC_TUNE_CFG_CHANGE_VMAF_OPT)
+            dst->vmaf_opt = src->vmaf_opt;
+
+        if (dst->vmaf_opt < 0 || dst->vmaf_opt > 1) {
+            mpp_err("invalid vmaf_opt %d not in range [0, 1]\n", dst->vmaf_opt);
             ret = MPP_ERR_VALUE;
         }
 
@@ -1133,6 +1235,7 @@ static const char *name_of_rc_mode[] = {
     "cbr",
     "fixqp",
     "avbr",
+    "smtrc"
 };
 
 static void update_rc_cfg_log(MppEncImpl *impl, const char* fmt, ...)
@@ -1218,6 +1321,9 @@ static void set_rc_cfg(RcCfg *cfg, MppEncCfgSet *cfg_set)
     case MPP_ENC_RC_MODE_FIXQP: {
         cfg->mode = RC_FIXQP;
     } break;
+    case MPP_ENC_RC_MODE_SMTRC: {
+        cfg->mode = RC_SMT;
+    } break;
     default : {
         cfg->mode = RC_AVBR;
     } break;
@@ -1238,6 +1344,7 @@ static void set_rc_cfg(RcCfg *cfg, MppEncCfgSet *cfg_set)
     cfg->bps_max    = rc->bps_max;
     cfg->bps_min    = rc->bps_min;
     cfg->scene_mode = cfg_set->tune.scene_mode;
+    cfg->rc_container = cfg_set->tune.rc_container;
 
     cfg->hier_qp_cfg.hier_qp_en = rc->hier_qp_en;
     memcpy(cfg->hier_qp_cfg.hier_frame_num, rc->hier_frame_num, sizeof(rc->hier_frame_num));
@@ -2234,6 +2341,7 @@ static MPP_RET set_enc_info_to_packet(MppEncImpl *enc, HalEncTask *hal_task)
         /* frame type */
         mpp_meta_set_s32(meta, KEY_OUTPUT_INTRA,    frm->is_intra);
         mpp_meta_set_s32(meta, KEY_OUTPUT_PSKIP,    frm->force_pskip || is_pskip);
+        mpp_meta_set_s32(meta, KEY_ENC_BPS_RT, rc_task->info.rt_bits);
 
         if (rc_task->info.frame_type == INTER_VI_FRAME)
             mpp_meta_set_s32(meta, KEY_ENC_USE_LTR, rc_task->cpb.refr.lt_idx);

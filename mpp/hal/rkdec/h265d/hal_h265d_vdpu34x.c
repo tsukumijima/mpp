@@ -39,6 +39,8 @@ static FILE *fp = NULL;
 #define HW_RPS
 #define PPS_SIZE                (112 * 64)//(96x64)
 
+#define COLMV_COMPRESS_EN       1
+
 #define SET_REF_VALID(regs, index, value)\
     do{ \
         switch(index){\
@@ -188,6 +190,11 @@ static MPP_RET hal_h265d_vdpu34x_deinit(void *hal)
             mpp_buffer_put(reg_ctx->rcb_buf[i]);
             reg_ctx->rcb_buf[i] = NULL;
         }
+    }
+
+    if (reg_ctx->missing_ref_buf) {
+        mpp_buffer_put(reg_ctx->missing_ref_buf);
+        reg_ctx->missing_ref_buf = NULL;
     }
 
     if (reg_ctx->group) {
@@ -880,6 +887,8 @@ static MPP_RET hal_h265d_vdpu34x_gen_regs(void *hal,  HalTaskInfo *syn)
             mpp_err("hevc rps buf all used");
             return MPP_ERR_NOMEM;
         }
+    } else {
+        syn->dec.reg_index = 0;
     }
     rps_ptr = mpp_buffer_get_ptr(reg_ctx->bufs) + reg_ctx->rps_offset;
     if (NULL == rps_ptr) {
@@ -908,12 +917,11 @@ static MPP_RET hal_h265d_vdpu34x_gen_regs(void *hal,  HalTaskInfo *syn)
         return MPP_ERR_NULL_PTR;
     }
 
-
     log2_min_cb_size = dxva_cxt->pp.log2_min_luma_coding_block_size_minus3 + 3;
 
     width = (dxva_cxt->pp.PicWidthInMinCbsY << log2_min_cb_size);
     height = (dxva_cxt->pp.PicHeightInMinCbsY << log2_min_cb_size);
-    mv_size = vdpu34x_get_colmv_size(width, height, ctu_size, 16, 16, 1);
+    mv_size = vdpu34x_get_colmv_size(width, height, ctu_size, 16, 16, COLMV_COMPRESS_EN);
     if (reg_ctx->cmv_bufs == NULL || reg_ctx->mv_size < mv_size) {
         size_t size = mv_size;
 
@@ -1028,7 +1036,7 @@ static MPP_RET hal_h265d_vdpu34x_gen_regs(void *hal,  HalTaskInfo *syn)
     hw_regs->common.reg011.dec_timeout_e        = 1;
     hw_regs->common.reg012.wr_ddr_align_en      = dxva_cxt->pp.tiles_enabled_flag
                                                   ? 0 : 1;
-    hw_regs->common.reg012.colmv_compress_en    = 1;
+    hw_regs->common.reg012.colmv_compress_en    = COLMV_COMPRESS_EN;
 
     if (mpp_get_soc_type() == ROCKCHIP_SOC_RK3588) {
         hw_regs->common.reg026.swreg_block_gating_e = 0xfffef;
@@ -1046,7 +1054,7 @@ static MPP_RET hal_h265d_vdpu34x_gen_regs(void *hal,  HalTaskInfo *syn)
     hw_regs->common.reg032_timeout_threshold = 0x3ffff;
 
     valid_ref = hw_regs->common_addr.reg130_decout_base;
-    reg_ctx->error_index = dxva_cxt->pp.CurrPic.Index7Bits;
+    reg_ctx->error_index[syn->dec.reg_index] = dxva_cxt->pp.CurrPic.Index7Bits;
     hw_regs->common_addr.reg132_error_ref_base = valid_ref;
 
     for (i = 0; i < (RK_S32)MPP_ARRAY_ELEMS(dxva_cxt->pp.RefPicList); i++) {
@@ -1054,68 +1062,77 @@ static MPP_RET hal_h265d_vdpu34x_gen_regs(void *hal,  HalTaskInfo *syn)
             dxva_cxt->pp.RefPicList[i].bPicEntry != 0x7f) {
 
             MppFrame mframe = NULL;
+            MppBuffer ref_buf = NULL;
             hw_regs->h265d_param.reg67_82_ref_poc[i] = dxva_cxt->pp.PicOrderCntValList[i];
             mpp_buf_slot_get_prop(reg_ctx->slots,
                                   dxva_cxt->pp.RefPicList[i].Index7Bits,
-                                  SLOT_BUFFER, &framebuf);
+                                  SLOT_BUFFER, &ref_buf);
             mpp_buf_slot_get_prop(reg_ctx->slots, dxva_cxt->pp.RefPicList[i].Index7Bits,
                                   SLOT_FRAME_PTR, &mframe);
-            if (framebuf != NULL) {
-                hw_regs->h265d_addr.reg164_179_ref_base[i] = mpp_buffer_get_fd(framebuf);
+            if (!ref_buf && mpp_get_soc_type() == ROCKCHIP_SOC_RK3588 &&
+                reg_ctx->cfg->base.disable_error) {
+                if (reg_ctx->missing_ref_buf && reg_ctx->missing_ref_buf_size < mpp_buffer_get_size(framebuf)) {
+                    mpp_buffer_put(reg_ctx->missing_ref_buf);
+                    reg_ctx->missing_ref_buf = NULL;
+                }
+
+                if (!reg_ctx->missing_ref_buf) {
+                    reg_ctx->missing_ref_buf_size = mpp_buffer_get_size(framebuf);
+                    mpp_buffer_get(reg_ctx->group, &reg_ctx->missing_ref_buf, reg_ctx->missing_ref_buf_size);
+                    if (!reg_ctx->missing_ref_buf) {
+                        syn->dec.flags.ref_err = 1;
+                        h265h_dbg(H265H_DBG_TASK_ERR, "Failed to generate missing ref buf\n");
+                        return MPP_ERR_NOMEM;
+                    }
+                }
+                ref_buf = reg_ctx->missing_ref_buf;
+            }
+            if (ref_buf) {
+                hw_regs->h265d_addr.reg164_179_ref_base[i] = mpp_buffer_get_fd(ref_buf);
                 valid_ref = hw_regs->h265d_addr.reg164_179_ref_base[i];
-                // mpp_log("cur poc %d, ref poc %d", dxva_cxt->pp.current_poc, dxva_cxt->pp.PicOrderCntValList[i]);
+                h265h_dbg(H265H_DBG_TASK_ERR, "cur poc %d, ref poc %d", dxva_cxt->pp.current_poc, dxva_cxt->pp.PicOrderCntValList[i]);
                 if ((pocdistance(dxva_cxt->pp.PicOrderCntValList[i], dxva_cxt->pp.current_poc) < distance)
                     && (!mpp_frame_get_errinfo(mframe))) {
                     distance = pocdistance(dxva_cxt->pp.PicOrderCntValList[i], dxva_cxt->pp.current_poc);
                     hw_regs->common_addr.reg132_error_ref_base = hw_regs->h265d_addr.reg164_179_ref_base[i];
-                    reg_ctx->error_index = dxva_cxt->pp.RefPicList[i].Index7Bits;
+                    reg_ctx->error_index[syn->dec.reg_index] = dxva_cxt->pp.RefPicList[i].Index7Bits;
                     hw_regs->common.reg021.error_intra_mode = 0;
+                    h265h_dbg(H265H_DBG_TASK_ERR, "update error ref to ref[%d] to poc %d, slot_idx %d, fd %d\n",
+                              i, dxva_cxt->pp.PicOrderCntValList[i],
+                              dxva_cxt->pp.RefPicList[i].Index7Bits,
+                              hw_regs->common_addr.reg132_error_ref_base);
                 }
             } else {
+                h265h_dbg(H265H_DBG_TASK_ERR, "ref[%d] buffer is empty, replace with fd %d\n", i, valid_ref);
                 hw_regs->h265d_addr.reg164_179_ref_base[i] = valid_ref;
             }
 
             mv_buf = hal_bufs_get_buf(reg_ctx->cmv_bufs, dxva_cxt->pp.RefPicList[i].Index7Bits);
-            hw_regs->h265d_addr.reg181_196_colmv_base[i] = mpp_buffer_get_fd(mv_buf->buf[0]);
 
             SET_REF_VALID(hw_regs->h265d_param, i, 1);
-        }
-    }
 
-    if ((reg_ctx->error_index == dxva_cxt->pp.CurrPic.Index7Bits) && !dxva_cxt->pp.IntraPicFlag) {
-        // mpp_err("current frm may be err, should skip process");
-        syn->dec.flags.ref_err = 1;
-        return MPP_OK;
-    }
+            if (hw_regs->common.reg013.h26x_error_mode &&
+                !hw_regs->common.reg021.error_intra_mode &&
+                (!ref_buf || mpp_frame_get_errinfo(mframe))) {
 
-    for (i = 0; i < (RK_S32)MPP_ARRAY_ELEMS(dxva_cxt->pp.RefPicList); i++) {
-
-        if (dxva_cxt->pp.RefPicList[i].bPicEntry != 0xff &&
-            dxva_cxt->pp.RefPicList[i].bPicEntry != 0x7f) {
-            if (!hw_regs->common.reg021.error_intra_mode) {
-                MppFrame mframe = NULL;
-
-                mpp_buf_slot_get_prop(reg_ctx->slots,
-                                      dxva_cxt->pp.RefPicList[i].Index7Bits,
-                                      SLOT_BUFFER, &framebuf);
-
-                mpp_buf_slot_get_prop(reg_ctx->slots, dxva_cxt->pp.RefPicList[i].Index7Bits,
-                                      SLOT_FRAME_PTR, &mframe);
-
-                if (framebuf == NULL || mpp_frame_get_errinfo(mframe)) {
-                    mv_buf = hal_bufs_get_buf(reg_ctx->cmv_bufs, reg_ctx->error_index);
-                    hw_regs->h265d_addr.reg164_179_ref_base[i] = hw_regs->common_addr.reg132_error_ref_base;
-                    hw_regs->h265d_addr.reg181_196_colmv_base[i] = mpp_buffer_get_fd(mv_buf->buf[0]);
-                }
+                mv_buf = hal_bufs_get_buf(reg_ctx->cmv_bufs, reg_ctx->error_index[syn->dec.reg_index]);
+                hw_regs->h265d_addr.reg164_179_ref_base[i] = hw_regs->common_addr.reg132_error_ref_base;
             }
         } else {
-            mv_buf = hal_bufs_get_buf(reg_ctx->cmv_bufs, reg_ctx->error_index);
+            mv_buf = hal_bufs_get_buf(reg_ctx->cmv_bufs, reg_ctx->error_index[syn->dec.reg_index]);
             hw_regs->h265d_addr.reg164_179_ref_base[i] = hw_regs->common_addr.reg132_error_ref_base;
-            hw_regs->h265d_addr.reg181_196_colmv_base[i] = mpp_buffer_get_fd(mv_buf->buf[0]);
             /* mark 3 to differ from current frame */
-            if (reg_ctx->error_index == dxva_cxt->pp.CurrPic.Index7Bits)
+            if (reg_ctx->error_index[syn->dec.reg_index] == dxva_cxt->pp.CurrPic.Index7Bits)
                 SET_POC_HIGNBIT_INFO(hw_regs->highpoc, i, poc_highbit, 3);
         }
+        hw_regs->h265d_addr.reg181_196_colmv_base[i] = mpp_buffer_get_fd(mv_buf->buf[0]);
+    }
+
+    if ((reg_ctx->error_index[syn->dec.reg_index] == dxva_cxt->pp.CurrPic.Index7Bits) &&
+        !dxva_cxt->pp.IntraPicFlag && !reg_ctx->cfg->base.disable_error) {
+        h265h_dbg(H265H_DBG_TASK_ERR, "current frm may be err, should skip process");
+        syn->dec.flags.ref_err = 1;
+        return MPP_OK;
     }
 
     trans_cfg.reg_idx = 161;
@@ -1275,12 +1292,6 @@ static MPP_RET hal_h265d_vdpu34x_wait(void *hal, HalTaskInfo *task)
     Vdpu34xH265dRegSet *hw_regs = NULL;
     RK_S32 i;
 
-    if (task->dec.flags.parse_err ||
-        task->dec.flags.ref_err) {
-        h265h_dbg(H265H_DBG_TASK_ERR, "%s found task error\n", __FUNCTION__);
-        goto ERR_PROC;
-    }
-
     if (reg_ctx->fast_mode) {
         hw_regs = ( Vdpu34xH265dRegSet *)reg_ctx->g_buf[index].hw_regs;
     } else {
@@ -1288,6 +1299,12 @@ static MPP_RET hal_h265d_vdpu34x_wait(void *hal, HalTaskInfo *task)
     }
 
     p = (RK_U8*)hw_regs;
+
+    if (task->dec.flags.parse_err ||
+        task->dec.flags.ref_err) {
+        h265h_dbg(H265H_DBG_TASK_ERR, "%s found task error\n", __FUNCTION__);
+        goto ERR_PROC;
+    }
 
     ret = mpp_dev_ioctl(reg_ctx->dev, MPP_DEV_CMD_POLL, NULL);
     if (ret)

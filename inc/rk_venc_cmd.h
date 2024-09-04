@@ -239,6 +239,7 @@ typedef enum MppEncRcCfgChange_e {
     MPP_ENC_RC_CFG_CHANGE_REFRESH       = (1 << 27),
     MPP_ENC_RC_CFG_CHANGE_GOP_REF_CFG   = (1 << 28),
     MPP_ENC_RC_CFG_CHANGE_FQP           = (1 << 29),
+    MPP_ENC_RC_CFG_CHANGE_QPDD          = (1 << 30),
     MPP_ENC_RC_CFG_CHANGE_ALL           = (0xFFFFFFFF),
 } MppEncRcCfgChange;
 
@@ -410,6 +411,7 @@ typedef struct MppEncRcCfg_t {
     RK_S32                  fqp_min_p;
     RK_S32                  fqp_max_i;
     RK_S32                  fqp_max_p;
+    RK_S32                  cu_qp_delta_depth;
 
     RK_S32                  hier_qp_en;
     RK_S32                  hier_qp_delta[4];
@@ -1426,13 +1428,39 @@ typedef enum MppEncSceneMode_e {
 
 typedef enum MppEncFineTuneCfgChange_e {
     /* change on scene mode */
-    MPP_ENC_TUNE_CFG_CHANGE_SCENE_MODE      = (1 << 0),
+    MPP_ENC_TUNE_CFG_CHANGE_SCENE_MODE          = (1 << 0),
+    MPP_ENC_TUNE_CFG_CHANGE_DEBLUR_EN           = (1 << 1),
+    MPP_ENC_TUNE_CFG_CHANGE_DEBLUR_STR          = (1 << 2),
+    MPP_ENC_TUNE_CFG_CHANGE_ANTI_FLICKER_STR    = (1 << 3),
+    MPP_ENC_TUNE_CFG_CHANGE_LAMBDA_IDX_I        = (1 << 5),
+    MPP_ENC_TUNE_CFG_CHANGE_LAMBDA_IDX_P        = (1 << 6),
+    MPP_ENC_TUNE_CFG_CHANGE_ATR_STR_I           = (1 << 7),
+    MPP_ENC_TUNE_CFG_CHANGE_ATR_STR_P           = (1 << 8),
+    MPP_ENC_TUNE_CFG_CHANGE_ATL_STR             = (1 << 9),
+    MPP_ENC_TUNE_CFG_CHANGE_SAO_STR_I           = (1 << 10),
+    MPP_ENC_TUNE_CFG_CHANGE_SAO_STR_P           = (1 << 11),
+    MPP_ENC_TUNE_CFG_CHANGE_QPMAP_EN            = (1 << 12),
+    MPP_ENC_TUNE_CFG_CHANGE_RC_CONTAINER        = (1 << 13),
+    MPP_ENC_TUNE_CFG_CHANGE_VMAF_OPT            = (1 << 14)
 } MppEncFineTuneCfgChange;
 
 typedef struct MppEncFineTuneCfg_t {
     RK_U32              change;
 
     MppEncSceneMode     scene_mode;
+    RK_S32              deblur_en; /* qpmap_en */
+    RK_S32              deblur_str; /* deblur strength */
+    RK_S32              anti_flicker_str;
+    RK_S32              lambda_idx_i;
+    RK_S32              lambda_idx_p;
+    RK_S32              atr_str_i; /* line_en */
+    RK_S32              atr_str_p; /* line_en */
+    RK_S32              atl_str; /* anti_stripe */
+    RK_S32              sao_str_i; /* anti blur */
+    RK_S32              sao_str_p; /* anti blur */
+    RK_S32              qpmap_en;
+    RK_S32              rc_container;
+    RK_S32              vmaf_opt;
 } MppEncFineTuneCfg;
 
 #endif /*__RK_VENC_CMD_H__*/

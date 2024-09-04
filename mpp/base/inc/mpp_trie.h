@@ -22,29 +22,56 @@
 
 typedef void* MppTrie;
 
-/* spatial optimized tire tree */
-typedef struct MppAcNode_t {
-    RK_S16          next[16];
-    /* idx - tire node index in ascending order */
-    RK_S32          idx;
-    /* id  - tire node carried payload data */
-    RK_S32          id;
-} MppTrieNode;
+#define MPP_TRIE_KEY_LEN                (4)
+#define MPP_TRIE_KEY_MAX                (1 << (MPP_TRIE_KEY_LEN))
+
+/*
+ * MppTrie node buffer layout
+ * +---------------+
+ * |  MppTrieImpl  |
+ * +---------------+
+ * |  MppTrieNodes |
+ * +---------------+
+ * |  MppTrieInfos |
+ * +---------------+
+ *
+ * MppTrieInfo element layout
+ * +---------------+
+ * |  MppTrieInfo  |
+ * +---------------+
+ * |  User context |
+ * +---------------+
+ * |  name string  |
+ * +---------------+
+ */
+typedef struct MppTrieInfo_t {
+    const char  *name;
+    void        *ctx;
+    RK_S16      index;
+    RK_S16      str_len;
+} MppTrieInfo;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-MPP_RET mpp_trie_init(MppTrie *trie, RK_S32 node_count, RK_S32 info_count);
+MPP_RET mpp_trie_init(MppTrie *trie, RK_S32 info_size);
 MPP_RET mpp_trie_deinit(MppTrie trie);
 
-MPP_RET mpp_trie_add_info(MppTrie trie, const char **info);
+/* Add NULL info to mark the last trie entry */
+MPP_RET mpp_trie_add_info(MppTrie trie, const char *name, void *ctx);
+
 RK_S32 mpp_trie_get_node_count(MppTrie trie);
 RK_S32 mpp_trie_get_info_count(MppTrie trie);
+RK_S32 mpp_trie_get_buf_size(MppTrie trie);
 
-MppTrieNode *mpp_trie_get_node(MppTrieNode *root, const char *name);
-const char **mpp_trie_get_info(MppTrie trie, const char *name);
-MppTrieNode *mpp_trie_node_root(MppTrie trie);
+/* trie lookup function */
+MppTrieInfo *mpp_trie_get_info(MppTrie trie, const char *name);
+MppTrieInfo *mpp_trie_get_info_first(MppTrie trie);
+MppTrieInfo *mpp_trie_get_info_next(MppTrie trie, MppTrieInfo *info);
+
+void mpp_trie_dump(MppTrie trie, const char *func);
+#define mpp_trie_dump_f(trie)   mpp_trie_dump(trie, __FUNCTION__)
 
 #ifdef __cplusplus
 }

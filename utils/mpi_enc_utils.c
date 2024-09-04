@@ -292,7 +292,7 @@ RK_S32 mpi_enc_opt_rc(void *ctx, const char *next)
     }
 
     mpp_err("invalid rate control usage -rc rc_mode\n");
-    mpp_err("rc_mode 0:vbr 1:cbr 2:avbr 3:cvbr 4:fixqp\n");
+    mpp_err("rc_mode 0:vbr 1:cbr 2:fixqp 3:avbr 4:smtrc\n");
     return 0;
 }
 
@@ -488,11 +488,168 @@ RK_S32 mpi_enc_opt_sm(void *ctx, const char *next)
     return 0;
 }
 
+RK_S32 mpi_enc_opt_qpdd(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->cu_qp_delta_depth = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid cu_qp_delta_depth\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_dbe(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->deblur_en = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid deblur en\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_dbs(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->deblur_str = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid deblur str\n");
+
+    return 0;
+}
+
 RK_S32 mpi_enc_opt_help(void *ctx, const char *next)
 {
     (void)ctx;
     (void)next;
     return -1;
+}
+
+RK_S32 mpi_enc_opt_atf(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->anti_flicker_str = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid cu_qp_delta_depth\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_atl(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->atl_str = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid atl_str\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_atr_i(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->atr_str_i = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid atr_str_i\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_atr_p(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->atr_str_p = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid atr_str_p\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_sao_i(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->sao_str_i = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid sao_str_i\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_sao_p(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->sao_str_p = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid sao_str_p\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_bc(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->rc_container = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid bitrate container\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_bias_i(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->bias_i = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid bias i\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_bias_p(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->bias_p = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid bias p\n");
+    return 0;
 }
 
 static MppOptInfo enc_opts[] = {
@@ -507,17 +664,29 @@ static MppOptInfo enc_opts[] = {
     {"tsrc",    "source type",          "input file source coding type",            mpi_enc_opt_tsrc},
     {"n",       "max frame number",     "max encoding frame number",                mpi_enc_opt_n},
     {"g",       "gop reference mode",   "gop_mode:gop_len:vi_len",                  mpi_enc_opt_g},
-    {"rc",      "rate control mode",    "set rc_mode, 0:vbr 1:cbr 2:fixqp 3:avbr",  mpi_enc_opt_rc},
+    {"rc",      "rate control mode",    "rc_mode, 0:vbr 1:cbr 2:fixqp 3:avbr 4:smtrc", mpi_enc_opt_rc},
     {"bps",     "bps target:min:max",   "set tareget:min:max bps",                  mpi_enc_opt_bps},
     {"fps",     "in/output fps",        "set input and output frame rate",          mpi_enc_opt_fps},
     {"qc",      "quality control",      "set qp_init:min:max:min_i:max_i",          mpi_enc_opt_qc},
-    {"fqc",     "frm quality control",  "set fqp min_i:max_i:min_p:max_p",          mpi_enc_opt_fqc},
+    {"fqc",     "frame quality control", "set fqp min_i:max_i:min_p:max_p",         mpi_enc_opt_fqc},
     {"s",       "instance_nb",          "number of instances",                      mpi_enc_opt_s},
     {"v",       "trace option",         "q - quiet f - show fps",                   mpi_enc_opt_v},
     {"l",       "loop count",           "loop encoding times for each frame",       mpi_enc_opt_l},
     {"ini",     "ini file",             "encoder extra ini config file",            mpi_enc_opt_ini},
     {"slt",     "slt file",             "slt verify data file",                     mpi_enc_opt_slt},
     {"sm",      "scene mode",           "scene_mode, 0:default 1:ipc",              mpi_enc_opt_sm},
+    {"qpdd",    "cu_qp_delta_depth",    "cu_qp_delta_depth, 0:1:2",                 mpi_enc_opt_qpdd},
+    {"dbe",     "deblur enable",        "deblur_en or qpmap_en, 0:close 1:open",           mpi_enc_opt_dbe},
+    {"dbs",     "deblur strength",      "deblur_str 0~3: hw + sw scheme; 4~7: hw scheme",  mpi_enc_opt_dbs},
+    {"atf",     "anti_flicker_str",     "anti_flicker_str, 0:off 1 2 3",            mpi_enc_opt_atf},
+    {"atl",     "atl_str",              "atl_str, 0:off 1 open",                    mpi_enc_opt_atl},
+    {"atr_i",   "atr_str_i",            "atr_str_i, 0:off 1 2 3",                   mpi_enc_opt_atr_i},
+    {"atr_p",   "atr_str_p",            "atr_str_p, 0:off 1 2 3",                   mpi_enc_opt_atr_p},
+    {"sao_i",   "sao_str_i",            "sao_str_i, 0:off 1 2 3",                   mpi_enc_opt_sao_i},
+    {"sao_p",   "sao_str_p",            "sao_str_p, 0:off 1 2 3",                   mpi_enc_opt_sao_p},
+    {"bc",      "bitrate container",    "rc_container, 0:off 1:weak 2:strong",      mpi_enc_opt_bc},
+    {"ibias",   "bias i",               "bias_i",                                   mpi_enc_opt_bias_i},
+    {"pbias",   "bias p",               "bias_p",                                   mpi_enc_opt_bias_p}
 };
 
 static RK_U32 enc_opt_cnt = MPP_ARRAY_ELEMS(enc_opts);
@@ -590,16 +759,14 @@ MPP_RET mpi_enc_test_cmd_update_by_args(MpiEncTestArgs* cmd, int argc, char **ar
 
     mpp_opt_init(&opts);
     /* should change node count when option increases */
-    mpp_opt_setup(opts, cmd, 71, enc_opt_cnt);
+    mpp_opt_setup(opts, cmd);
 
     for (i = 0; i < enc_opt_cnt; i++)
         mpp_opt_add(opts, &enc_opts[i]);
 
     /* mark option end */
     mpp_opt_add(opts, NULL);
-
     ret = mpp_opt_parse(opts, argc, argv);
-
     /* check essential parameter */
     if (cmd->type <= MPP_VIDEO_CodingAutoDetect) {
         mpp_err("invalid type %d\n", cmd->type);

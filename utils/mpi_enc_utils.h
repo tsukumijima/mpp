@@ -76,6 +76,24 @@ typedef struct MpiEncTestArgs_t {
 
     /* -sm scene_mode */
     RK_S32              scene_mode;
+    RK_S32              rc_container;
+    RK_S32              bias_i;
+    RK_S32              bias_p;
+
+    /* -qpdd cu_qp_delta_depth */
+    RK_S32              cu_qp_delta_depth;
+    RK_S32              anti_flicker_str;
+    RK_S32              atr_str_i;
+    RK_S32              atr_str_p;
+    RK_S32              atl_str;
+    RK_S32              sao_str_i;
+    RK_S32              sao_str_p;
+
+    /* -dbe deblur enable flag
+     * -dbs deblur strength
+     */
+    RK_S32              deblur_en;
+    RK_S32              deblur_str;
 
     /* -v q runtime log disable flag */
     RK_U32              quiet;

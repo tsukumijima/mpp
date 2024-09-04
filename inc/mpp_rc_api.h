@@ -50,6 +50,7 @@ typedef enum RcMode_e {
     RC_CBR,
     RC_FIXQP,
     RC_AVBR,
+    RC_SMT,
     RC_CVBR,
     RC_QVBR,
     RC_LEARNING,
@@ -186,6 +187,8 @@ typedef struct RcCfg_s {
     RK_U32          refresh_len;
     RK_S32          scene_mode;
     RK_U32          fps_chg_prop;
+
+    RK_S32          rc_container;
 } RcCfg;
 
 /*

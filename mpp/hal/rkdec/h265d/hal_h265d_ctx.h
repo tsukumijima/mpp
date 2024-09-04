@@ -73,7 +73,7 @@ typedef struct HalH265dCtx_t {
     RK_U8           ctu_size;
     RK_U8           num_row_tiles;
     RK_U8           bit_depth;
-    RK_U8           error_index;
+    RK_U8           error_index[MAX_GEN_REG];
     /* for vdpu34x */
     MppBuffer       bufs;
     RK_S32          bufs_fd;
@@ -87,6 +87,8 @@ typedef struct HalH265dCtx_t {
     void            *pps_buf;
     void            *sw_rps_buf;
     HalBufs         origin_bufs;
+    MppBuffer       missing_ref_buf;
+    RK_U32          missing_ref_buf_size;
 
     const MppDecHwCap   *hw_info;
 } HalH265dCtx;
