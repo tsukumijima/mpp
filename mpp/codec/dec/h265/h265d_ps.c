@@ -1880,7 +1880,7 @@ RK_S32 mpp_hevc_decode_nal_sps(HEVCContext *s)
         if (s->sps_list[sps_id] != NULL)
             mpp_mem_pool_put(s->sps_pool, s->sps_list[sps_id]);
         s->sps_list[sps_id] = sps_buf;
-        s->ps_need_upate = 1;
+        s->sps_need_upate = 1;
     }
 
     if (s->sps_list[sps_id])

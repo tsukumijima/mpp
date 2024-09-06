@@ -750,11 +750,12 @@ static RK_S32 hls_slice_header(HEVCContext *s)
     }
     s->pps = (HEVCPPS*)s->pps_list[sh->pps_id];
 
-    if (s->ps_need_upate || s->sps != (HEVCSPS*)s->sps_list[s->pps->sps_id]) {
+    if (s->sps_need_upate || s->sps != (HEVCSPS*)s->sps_list[s->pps->sps_id]) {
         s->sps = (HEVCSPS*)s->sps_list[s->pps->sps_id];
         mpp_hevc_clear_refs(s);
 
         s->ps_need_upate = 1;
+        s->sps_need_upate = 0;
         ret = set_sps(s, s->sps);
         if (ret < 0)
             return ret;
