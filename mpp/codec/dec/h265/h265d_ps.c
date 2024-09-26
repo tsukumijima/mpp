@@ -1238,18 +1238,21 @@ static RK_S32 decode_vui(HEVCContext *s, HEVCSPS *sps)
 
     READ_ONEBIT(gb, &vui->default_display_window_flag);
     if (vui->default_display_window_flag) {
-        //TODO: * 2 is only valid for 420
         READ_UE(gb, &vui->def_disp_win.left_offset);
-        vui->def_disp_win.left_offset  =  vui->def_disp_win.left_offset * 2;
-
         READ_UE(gb, &vui->def_disp_win.right_offset);
-        vui->def_disp_win.right_offset  =  vui->def_disp_win.right_offset * 2;
-
-        READ_UE(gb, &vui->def_disp_win.right_offset);
-        vui->def_disp_win.top_offset = vui->def_disp_win.top_offset * 2;
-
-        READ_UE(gb, &vui->def_disp_win.right_offset);
-        vui->def_disp_win.bottom_offset = vui->def_disp_win.bottom_offset * 2;
+        READ_UE(gb, &vui->def_disp_win.top_offset);
+        READ_UE(gb, &vui->def_disp_win.bottom_offset);
+        if (sps) {
+            if (sps->chroma_format_idc == H265_CHROMA_420) {
+                vui->def_disp_win.left_offset   *= 2;
+                vui->def_disp_win.right_offset  *= 2;
+                vui->def_disp_win.top_offset    *= 2;
+                vui->def_disp_win.bottom_offset *= 2;
+            } else if (sps->chroma_format_idc == H265_CHROMA_422) {
+                vui->def_disp_win.left_offset   *= 2;
+                vui->def_disp_win.right_offset  *= 2;
+            }
+        }
 
 #if 0
         if (s->apply_defdispwin &&
@@ -1471,15 +1474,19 @@ RK_S32 mpp_hevc_decode_nal_sps(HEVCContext *s)
     READ_ONEBIT(gb, &value);
 
     if (value) { // pic_conformance_flag
-        //TODO: * 2 is only valid for 420
         READ_UE(gb, &sps->pic_conf_win.left_offset);
-        sps->pic_conf_win.left_offset   = sps->pic_conf_win.left_offset * 2;
         READ_UE(gb, &sps->pic_conf_win.right_offset);
-        sps->pic_conf_win.right_offset  = sps->pic_conf_win.right_offset * 2;
         READ_UE(gb, &sps->pic_conf_win.top_offset);
-        sps->pic_conf_win.top_offset    =  sps->pic_conf_win.top_offset * 2;
         READ_UE(gb, &sps->pic_conf_win.bottom_offset);
-        sps->pic_conf_win.bottom_offset = sps->pic_conf_win.bottom_offset * 2;
+        if (sps->chroma_format_idc == H265_CHROMA_420) {
+            sps->pic_conf_win.left_offset   *= 2;
+            sps->pic_conf_win.right_offset  *= 2;
+            sps->pic_conf_win.top_offset    *= 2;
+            sps->pic_conf_win.bottom_offset *= 2;
+        } else if (sps->chroma_format_idc == H265_CHROMA_422) {
+            sps->pic_conf_win.left_offset   *= 2;
+            sps->pic_conf_win.right_offset  *= 2;
+        }
         sps->output_window = sps->pic_conf_win;
     }
 
