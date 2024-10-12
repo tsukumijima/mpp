@@ -37,7 +37,7 @@
 #include "mpp_rc_api.h"
 
 static RK_S32 aq_thd_smart[16] = {
-    0,  0,  0,  0,  3,  3,  5,  5,
+    1,  3,  3,  3,  3,  3,  5,  5,
     8,  8,  8, 15, 15, 20, 25, 28
 };
 
@@ -376,6 +376,11 @@ MPP_RET test_mpp_enc_cfg_setup(MpiEncMultiCtxInfo *info)
         mpp_enc_cfg_set_st(cfg, "hw:aq_thrd_p", aq_thd_smart);
         mpp_enc_cfg_set_st(cfg, "hw:aq_step_i", aq_step_smart);
         mpp_enc_cfg_set_st(cfg, "hw:aq_step_p", aq_step_smart);
+    } else {
+        mpp_enc_cfg_set_st(cfg, "hw:aq_thrd_i", aq_thd);
+        mpp_enc_cfg_set_st(cfg, "hw:aq_thrd_p", aq_thd);
+        mpp_enc_cfg_set_st(cfg, "hw:aq_step_i", aq_step_i_ipc);
+        mpp_enc_cfg_set_st(cfg, "hw:aq_step_p", aq_step_p_ipc);
     }
 
     mpp_enc_cfg_set_s32(cfg, "rc:max_reenc_times", 0);
@@ -390,16 +395,11 @@ MPP_RET test_mpp_enc_cfg_setup(MpiEncMultiCtxInfo *info)
     mpp_enc_cfg_set_s32(cfg, "tune:scene_mode", p->scene_mode);
     mpp_enc_cfg_set_s32(cfg, "tune:deblur_en", cmd->deblur_en);
     mpp_enc_cfg_set_s32(cfg, "tune:deblur_str", cmd->deblur_str);
-    mpp_enc_cfg_set_s32(cfg, "tune:qpmap_en", 1);
     mpp_enc_cfg_set_s32(cfg, "tune:rc_container", cmd->rc_container);
     mpp_enc_cfg_set_s32(cfg, "tune:vmaf_opt", 0);
     mpp_enc_cfg_set_s32(cfg, "hw:qbias_en", 1);
     mpp_enc_cfg_set_s32(cfg, "hw:qbias_i", cmd->bias_i);
     mpp_enc_cfg_set_s32(cfg, "hw:qbias_p", cmd->bias_p);
-    mpp_enc_cfg_set_st(cfg, "hw:aq_thrd_i", aq_thd);
-    mpp_enc_cfg_set_st(cfg, "hw:aq_thrd_p", aq_thd);
-    mpp_enc_cfg_set_st(cfg, "hw:aq_step_i", aq_step_i_ipc);
-    mpp_enc_cfg_set_st(cfg, "hw:aq_step_p", aq_step_p_ipc);
     mpp_enc_cfg_set_s32(cfg, "hw:skip_bias_en", 0);
     mpp_enc_cfg_set_s32(cfg, "hw:skip_bias", 4);
     mpp_enc_cfg_set_s32(cfg, "hw:skip_sad", 8);
