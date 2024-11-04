@@ -380,11 +380,11 @@ static MPP_RET fill_registers(Avs2dHalCtx_t *p_hal, Vdpu383Avs2dRegSet *regs, Ha
                         is_fbc, y_virstride, hor_virstride, ver_virstride);
 
         if (is_fbc) {
-            RK_U32 pixel_width = MPP_ALIGN(mpp_frame_get_width(mframe), 64);
+            RK_U32 fbc_hdr_stride = mpp_frame_get_fbc_hdr_stride(mframe);
             RK_U32 fbd_offset;
 
             regs->ctrl_regs.reg9.fbc_e = 1;
-            regs->avs2d_paras.reg68_hor_virstride = pixel_width / 64;
+            regs->avs2d_paras.reg68_hor_virstride = fbc_hdr_stride / 64;
             fbd_offset = regs->avs2d_paras.reg68_hor_virstride * MPP_ALIGN(ver_virstride, 64) * 4;
             regs->avs2d_addrs.reg193_fbc_payload_offset = fbd_offset;
         } else if (is_tile) {
@@ -450,6 +450,21 @@ static MPP_RET fill_registers(Avs2dHalCtx_t *p_hal, Vdpu383Avs2dRegSet *regs, Ha
                     mv_buf = hal_bufs_get_buf(p_hal->cmv_bufs, slot_idx);
                     regs->avs2d_addrs.reg217_232_colmv_ref_base[i] = mpp_buffer_get_fd(mv_buf->buf[0]);
                 }
+            }
+        }
+
+        if (p_hal->syntax.refp.scene_ref_enable && p_hal->syntax.refp.scene_ref_slot_idx >= 0) {
+            MppFrame scene_ref = NULL;
+            RK_S32 slot_idx = p_hal->syntax.refp.scene_ref_slot_idx;
+            RK_S32 replace_idx = p_hal->syntax.refp.scene_ref_replace_pos;
+
+            mpp_buf_slot_get_prop(p_hal->frame_slots, slot_idx, SLOT_FRAME_PTR, &scene_ref);
+
+            if (scene_ref) {
+                regs->avs2d_addrs.reg170_185_ref_base[replace_idx] = get_frame_fd(p_hal, slot_idx);
+                regs->avs2d_addrs.reg195_210_payload_st_ref_base[replace_idx] = regs->avs2d_addrs.reg170_185_ref_base[replace_idx];
+                mv_buf = hal_bufs_get_buf(p_hal->cmv_bufs, slot_idx);
+                regs->avs2d_addrs.reg217_232_colmv_ref_base[replace_idx] = mpp_buffer_get_fd(mv_buf->buf[0]);
             }
         }
 
