@@ -42,12 +42,25 @@ typedef enum MppDecCfgChange_e {
     MPP_DEC_CFG_CHANGE_DISABLE_DPB_CHECK = (1 << 20),
     /* reserve high bit for global config */
     MPP_DEC_CFG_CHANGE_DISABLE_THREAD    = (1 << 28),
+    MPP_DEC_CFG_CHANGE_CODEC_MODE        = (1 << 29),
 
     MPP_DEC_CFG_CHANGE_ALL               = (0xFFFFFFFF),
 } MppDecCfgChange;
 
 typedef enum MppVprocMode_e {
+    MPP_VPROC_MODE_NONE                  = 0,
+    /*
+     * Deinterlacing interlaced video stream only.
+     * If video is marked as progressive, it won't be deinterlaced.
+     */
     MPP_VPROC_MODE_DEINTELACE            = (1 << 0),
+    /*
+     * Both interlaced and progressive video will be sending to Vproc for Detection.
+     * - For progressive vide, output directly during detection and adjust later
+     *       according to IEP result.
+     * - For interlaced video, interlaceing directly and adjust later according to
+     *       IEP result.
+     */
     MPP_VPROC_MODE_DETECTION             = (1 << 1),
     MPP_VPROC_MODE_ALL                   = (0xFFFFFFFF),
 } MppVprocMode;
@@ -81,6 +94,7 @@ typedef struct MppDecBaseCfg_t {
     RK_U32              enable_mvc;
     RK_U32              disable_dpb_chk;
     RK_U32              disable_thread;
+    RK_U32              codec_mode;
 } MppDecBaseCfg;
 
 typedef enum MppDecCbCfgChange_e {
