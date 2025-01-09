@@ -8,6 +8,8 @@ add_library(mpp_base STATIC
     mpp_enc_ref.cpp
     mpp_enc_cfg.cpp
     mpp_dec_cfg.cpp
+    mpp_sys_cfg.cpp
+    mpp_sys_cfg_st.cpp
     mpp_cluster.cpp
     mpp_buf_slot.cpp
     mpp_buffer_impl.cpp
@@ -25,6 +27,7 @@ add_library(mpp_base STATIC
     mpp_2str.c
     mpp_dec_hdr_meta.c
     kmpp_obj.c
+    mpp_venc_kcfg.c
     )
 
 set_target_properties(mpp_base PROPERTIES FOLDER "mpp/base")

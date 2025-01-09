@@ -33,19 +33,6 @@ typedef union MppLocTbl_u {
     };
 } KmppLocTbl;
 
-/* kernel object trie share info */
-typedef struct KmppObjTrie_t {
-    /* share object trie root userspace address (read only) */
-    __u64               trie_root;
-} KmppObjTrie;
-
-/* kernel object share memory */
-typedef struct KmppObjShm_t {
-    __u64               kobj_uaddr;
-    __u64               kobj_kaddr;
-    /* DO NOT access reserved data only used by kernel */
-} KmppObjShm;
-
 /* KmppObjDef - mpp object name size and access table trie definition */
 typedef void* KmppObjDef;
 /* KmppObj - mpp object for string name access and function access */
@@ -54,12 +41,16 @@ typedef void* KmppObj;
 typedef void (*KmppObjPreset)(void *obj);
 typedef rk_s32 (*KmppObjDump)(void *obj);
 
-rk_s32 kmpp_objdef_init(KmppObjDef *def, const char *name);
-rk_s32 kmpp_objdef_get_entry(KmppObjDef def, const char *name, KmppLocTbl **tbl);
-rk_s32 kmpp_objdef_add_trie_root(KmppObjDef def, void *root);
-rk_s32 kmpp_objdef_add_dump(KmppObjDef def, KmppObjDump dump);
-rk_s32 kmpp_objdef_deinit(KmppObjDef def);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* query objdef from /dev/kmpp_objs */
+rk_s32 kmpp_objdef_get(KmppObjDef *def, const char *name);
+rk_s32 kmpp_objdef_put(KmppObjDef def);
+
 rk_u32 kmpp_objdef_lookup(KmppObjDef *def, const char *name);
+rk_s32 kmpp_objdef_dump(KmppObjDef def);
 
 /* mpp objcet internal element set / get function */
 const char *kmpp_objdef_get_name(KmppObjDef def);
@@ -71,8 +62,15 @@ rk_s32 kmpp_obj_get(KmppObj *obj, KmppObjDef def);
 rk_s32 kmpp_obj_put(KmppObj obj);
 rk_s32 kmpp_obj_check(KmppObj obj, const char *caller);
 
+/* handle is the kernel share object userspace base address for kernel ioctl */
+void *kmpp_obj_get_hnd(KmppObj obj);
+/* handle size defined the copy size for kernel ioctl */
+rk_s32 kmpp_obj_get_hnd_size(KmppObj obj);
+/*
+ * entry is the userspace address for kernel share object body
+ * entry = handle + entry_offset
+ */
 void *kmpp_obj_get_entry(KmppObj obj);
-
 
 rk_s32 kmpp_obj_set_s32(KmppObj obj, const char *name, rk_s32 val);
 rk_s32 kmpp_obj_get_s32(KmppObj obj, const char *name, rk_s32 *val);
@@ -106,8 +104,17 @@ rk_s32 kmpp_obj_tbl_get_st(KmppObj obj, KmppLocTbl *tbl, void *val);
 
 /* run a callback function */
 rk_s32 kmpp_obj_run(KmppObj obj, const char *name);
-rk_s32 kmpp_obj_dump(KmppObj obj, const char *caller);
 
-#define kmpp_obj_dump_f(obj) kmpp_obj_dump(obj, __FUNCTION__)
+/* dump by userspace */
+rk_s32 kmpp_obj_udump_f(KmppObj obj, const char *caller);
+/* dump by kernel */
+rk_s32 kmpp_obj_kdump_f(KmppObj obj, const char *caller);
+
+#define kmpp_obj_udump(obj) kmpp_obj_udump_f(obj, __FUNCTION__)
+#define kmpp_obj_kdump(obj) kmpp_obj_kdump_f(obj, __FUNCTION__)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* __KMPP_OBJ_H__ */
