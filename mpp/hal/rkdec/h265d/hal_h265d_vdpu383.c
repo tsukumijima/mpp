@@ -173,6 +173,11 @@ static MPP_RET hal_h265d_vdpu383_init(void *hal, MppHalCfg *cfg)
         return ret;
     }
 
+    if (cfg->hal_fbc_adj_cfg) {
+        cfg->hal_fbc_adj_cfg->func = vdpu383_afbc_align_calc;
+        cfg->hal_fbc_adj_cfg->expand = 16;
+    }
+
     (void) cfg;
     return MPP_OK;
 }
@@ -699,7 +704,7 @@ static void h265d_refine_rcb_size(Vdpu383RcbInfo *rcb_info,
     // save space mode : half for RCB_FILTERD_ROW, half for RCB_FILTERD_PROTECT_ROW
     if (width > 4096)
         filterd_row_append = 27648;
-    rcb_info[RCB_FILTERD_ROW].size = MPP_RCB_BYTES(rcb_bits / 2);
+    rcb_info[RCB_FILTERD_ROW].size = MPP_RCB_BYTES(rcb_bits / 2) + filterd_row_append;
     rcb_info[RCB_FILTERD_PROTECT_ROW].size = MPP_RCB_BYTES(rcb_bits / 2) + filterd_row_append;
     rcb_bits += ext_row_align_size;
     if (tile_row_cut_num)
@@ -864,16 +869,16 @@ static MPP_RET hal_h265d_vdpu383_gen_regs(void *hal,  HalTaskInfo *syn)
     RK_S32 fd = -1;
     RK_U32 mv_size = 0;
     RK_S32 distance = INT_MAX;
+    HalH265dCtx *reg_ctx = (HalH265dCtx *)hal;
 
     (void) fd;
     if (syn->dec.flags.parse_err ||
-        syn->dec.flags.ref_err) {
+        (syn->dec.flags.ref_err && !reg_ctx->cfg->base.disable_error)) {
         h265h_dbg(H265H_DBG_TASK_ERR, "%s found task error\n", __FUNCTION__);
         return MPP_OK;
     }
 
     h265d_dxva2_picture_context_t *dxva_ctx = (h265d_dxva2_picture_context_t *)syn->dec.syntax.data;
-    HalH265dCtx *reg_ctx = (HalH265dCtx *)hal;
     HalBuf *origin_buf = NULL;
 
     void *rps_ptr = NULL;
@@ -1139,7 +1144,7 @@ static MPP_RET hal_h265d_vdpu383_gen_regs(void *hal,  HalTaskInfo *syn)
     }
 
     if ((reg_ctx->error_index[syn->dec.reg_index] == dxva_ctx->pp.CurrPic.Index7Bits) &&
-        !dxva_ctx->pp.IntraPicFlag && !reg_ctx->cfg->base.disable_error) {
+        !dxva_ctx->pp.IntraPicFlag) {
         h265h_dbg(H265H_DBG_TASK_ERR, "current frm may be err, should skip process");
         syn->dec.flags.ref_err = 1;
         return MPP_OK;
@@ -1236,7 +1241,7 @@ static MPP_RET hal_h265d_vdpu383_start(void *hal, HalTaskInfo *task)
     RK_U32 i;
 
     if (task->dec.flags.parse_err ||
-        task->dec.flags.ref_err) {
+        (task->dec.flags.ref_err && !reg_ctx->cfg->base.disable_error)) {
         h265h_dbg(H265H_DBG_TASK_ERR, "%s found task error\n", __FUNCTION__);
         return MPP_OK;
     }
@@ -1341,7 +1346,7 @@ static MPP_RET hal_h265d_vdpu383_wait(void *hal, HalTaskInfo *task)
     p = (RK_U8*)hw_regs;
 
     if (task->dec.flags.parse_err ||
-        task->dec.flags.ref_err) {
+        (task->dec.flags.ref_err && !reg_ctx->cfg->base.disable_error)) {
         h265h_dbg(H265H_DBG_TASK_ERR, "%s found task error\n", __FUNCTION__);
         goto ERR_PROC;
     }
@@ -1447,7 +1452,7 @@ static MPP_RET hal_h265d_vdpu383_control(void *hal, MpiCmd cmd_type, void *param
 
         if (fmt == MPP_FMT_YUV422SP) {
             mpp_slots_set_prop(p_hal->slots, SLOTS_LEN_ALIGN, rkv_len_align_422);
-        } else if (fmt == MPP_FMT_YUV444SP) {
+        } else if (fmt == MPP_FMT_YUV444SP || fmt == MPP_FMT_YUV444SP_10BIT) {
             mpp_slots_set_prop(p_hal->slots, SLOTS_LEN_ALIGN, rkv_len_align_444);
         }
         if (MPP_FRAME_FMT_IS_FBC(fmt)) {

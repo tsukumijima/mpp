@@ -3,9 +3,8 @@
  * Copyright (c) 2024 Rockchip Electronics Co., Ltd.
  */
 
-#define MODULE_TAG "mpp_venc_kcfg"
+#define MODULE_TAG "kmpp_venc_cfg"
 
-#include "rk_venc_kcfg.h"
 #include <string.h>
 #include <pthread.h>
 
@@ -15,6 +14,7 @@
 #include "mpp_common.h"
 
 #include "kmpp_obj.h"
+#include "rk_venc_kcfg.h"
 
 #define VENC_KCFG_DBG_FUNC              (0x00000001)
 #define VENC_KCFG_DBG_INFO              (0x00000002)
@@ -96,7 +96,7 @@ MPP_RET mpp_venc_kcfg_init(MppVencKcfg *cfg, MppVencKcfgType type)
     }
     pthread_mutex_unlock(&lock);
 
-    kmpp_obj_get(&obj, kcfg_defs[type]);
+    kmpp_obj_get_f(&obj, kcfg_defs[type]);
 
     *cfg = obj;
 
@@ -128,7 +128,7 @@ MPP_RET mpp_venc_kcfg_init_by_name(MppVencKcfg *cfg, const char *name)
 
     mpp_env_get_u32("venc_kcfg_debug", &venc_kcfg_debug, 0);
 
-    kmpp_obj_get(&obj, kcfg_defs[type]);
+    kmpp_obj_get_f(&obj, kcfg_defs[type]);
 
     *cfg = obj;
 
@@ -144,9 +144,7 @@ MPP_RET mpp_venc_kcfg_deinit(MppVencKcfg cfg)
         return MPP_ERR_NULL_PTR;
     }
 
-    kmpp_obj_put(obj);
-
-    return MPP_OK;
+    return kmpp_obj_put_f(obj);
 }
 
 #define MPP_VENC_KCFG_ACCESS(set_type, get_type, cfg_type) \

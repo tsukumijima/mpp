@@ -22,18 +22,21 @@
 #include "mpp_sys_cfg.h"
 #include "mpp_soc.h"
 #include "mpp_mem_pool.h"
+#include "mpp_compat_impl.h"
 
-#define MPP_SYS_CFG_DBG_FUNC            (0x00000001)
-#define MPP_SYS_CFG_DBG_INFO            (0x00000002)
-#define MPP_SYS_CFG_DBG_SET             (0x00000004)
-#define MPP_SYS_CFG_DBG_GET             (0x00000008)
+#define SYS_CFG_DBG_FUNC                (0x00000001)
+#define SYS_CFG_DBG_INFO                (0x00000002)
+#define SYS_CFG_DBG_SET                 (0x00000004)
+#define SYS_CFG_DBG_GET                 (0x00000008)
+#define SYS_CFG_DBG_DEC_BUF             (0x00000010)
 
-#define mpp_sys_cfg_dbg(flag, fmt, ...) _mpp_dbg_f(mpp_sys_cfg_debug, flag, fmt, ## __VA_ARGS__)
+#define sys_cfg_dbg(flag, fmt, ...)     _mpp_dbg_f(mpp_sys_cfg_debug, flag, fmt, ## __VA_ARGS__)
 
-#define mpp_sys_cfg_dbg_func(fmt, ...)  mpp_sys_cfg_dbg(MPP_SYS_CFG_DBG_FUNC, fmt, ## __VA_ARGS__)
-#define mpp_sys_cfg_dbg_info(fmt, ...)  mpp_sys_cfg_dbg(MPP_SYS_CFG_DBG_INFO, fmt, ## __VA_ARGS__)
-#define mpp_sys_cfg_dbg_set(fmt, ...)   mpp_sys_cfg_dbg(MPP_SYS_CFG_DBG_SET, fmt, ## __VA_ARGS__)
-#define mpp_sys_cfg_dbg_get(fmt, ...)   mpp_sys_cfg_dbg(MPP_SYS_CFG_DBG_GET, fmt, ## __VA_ARGS__)
+#define sys_cfg_dbg_func(fmt, ...)      sys_cfg_dbg(SYS_CFG_DBG_FUNC, fmt, ## __VA_ARGS__)
+#define sys_cfg_dbg_info(fmt, ...)      sys_cfg_dbg(SYS_CFG_DBG_INFO, fmt, ## __VA_ARGS__)
+#define sys_cfg_dbg_set(fmt, ...)       sys_cfg_dbg(SYS_CFG_DBG_SET, fmt, ## __VA_ARGS__)
+#define sys_cfg_dbg_get(fmt, ...)       sys_cfg_dbg(SYS_CFG_DBG_GET, fmt, ## __VA_ARGS__)
+#define sys_cfg_dbg_dec_buf(fmt, ...)   sys_cfg_dbg(SYS_CFG_DBG_DEC_BUF, fmt, ## __VA_ARGS__)
 
 #define SYS_CFG_CNT 3
 
@@ -74,7 +77,6 @@ public:
     do { \
         MppCfgInfo tmp = { \
             CFG_FUNC_TYPE_##cfg_type, \
-            flag > 0 ? 1 : 0, \
             (RK_U32)((long)&(((MppSysCfgSet *)0)->field_change.change)), \
             flag, \
             (RK_U32)((long)&(((MppSysCfgSet *)0)->field_change.field_data)), \
@@ -98,12 +100,12 @@ public:
     ENTRY(dec_buf_chk, unit_size,   U32, RK_U32,            MPP_SYS_DEC_BUF_CHK_CFG_CHANGE_CROP_RIGHT,      dec_buf_chk, unit_size) \
     ENTRY(dec_buf_chk, has_metadata,    U32, RK_U32,        MPP_SYS_DEC_BUF_CHK_CFG_CHANGE_FLAG_METADATA,   dec_buf_chk, has_metadata) \
     ENTRY(dec_buf_chk, has_thumbnail,   U32, RK_U32,        MPP_SYS_DEC_BUF_CHK_CFG_CHANGE_FLAG_THUMBNAIL,  dec_buf_chk, has_thumbnail) \
+    ENTRY(dec_buf_chk, h_stride_by_byte,  U32, RK_U32,      MPP_SYS_DEC_BUF_CHK_CFG_CHANGE_H_STRIDE_BYTE,   dec_buf_chk, h_stride_by_byte) \
+    ENTRY(dec_buf_chk, v_stride,          U32, RK_U32,      MPP_SYS_DEC_BUF_CHK_CFG_CHANGE_V_STRIDE,        dec_buf_chk, v_stride) \
     /* read-only config */ \
     ENTRY(dec_buf_chk, cap_fbc,     U32, RK_U32,            0,                                              dec_buf_chk, cap_fbc) \
     ENTRY(dec_buf_chk, cap_tile,    U32, RK_U32,            0,                                              dec_buf_chk, cap_tile) \
-    ENTRY(dec_buf_chk, h_stride_by_byte,    U32, RK_U32,    0,                                              dec_buf_chk, h_stride_by_byte) \
     ENTRY(dec_buf_chk, h_stride_by_pixel,   U32, RK_U32,    0,                                              dec_buf_chk, h_stride_by_pixel) \
-    ENTRY(dec_buf_chk, v_stride,    U32, RK_U32,            0,                                              dec_buf_chk, v_stride) \
     ENTRY(dec_buf_chk, offset_y,    U32, RK_U32,            0,                                              dec_buf_chk, offset_y) \
     ENTRY(dec_buf_chk, size_total,  U32, RK_U32,            0,                                              dec_buf_chk, size_total) \
     ENTRY(dec_buf_chk, size_fbc_hdr, U32, RK_U32,           0,                                              dec_buf_chk, size_fbc_hdr) \
@@ -128,7 +130,7 @@ MppSysCfgService::MppSysCfgService() :
     mHead.info_count = mpp_trie_get_info_count(mTrie);
     mHead.info_size = mpp_trie_get_buf_size(mTrie);
 
-    mpp_sys_cfg_dbg_func("node cnt: %d\n", mHead.node_count);
+    sys_cfg_dbg_func("node cnt: %d\n", mHead.node_count);
 }
 
 MppSysCfgService::~MppSysCfgService()
@@ -199,6 +201,7 @@ typedef enum SysCfgAlignType_e {
     SYS_CFG_ALIGN_256,
     SYS_CFG_ALIGN_256_ODD,
     SYS_CFG_ALIGN_128_ODD_PLUS_64,
+    SYS_CFG_ALIGN_LEN_DEFAULT,
     SYS_CFG_ALIGN_LEN_420,
     SYS_CFG_ALIGN_LEN_422,
     SYS_CFG_ALIGN_LEN_444,
@@ -225,6 +228,7 @@ static RK_U32 mpp_sys_cfg_align(SysCfgAlignType type, RK_U32 val)
         else
             return ((MPP_ALIGN(val, 128) | 128) + 64);
     };
+    case SYS_CFG_ALIGN_LEN_DEFAULT: { return (9 * MPP_ALIGN(val, 16) / 5);};
     case SYS_CFG_ALIGN_LEN_420:
     case SYS_CFG_ALIGN_LEN_422: { return (2 * MPP_ALIGN(val, 16));};
     case SYS_CFG_ALIGN_LEN_444: { return (3 * MPP_ALIGN(val, 16));};
@@ -262,16 +266,16 @@ static RK_S32 get_afbc_min_size(RK_S32 width, RK_S32 height, RK_S32 bpp)
 }
 
 /*
- * in:  fmt_fbc,type,width
+ * in:  fmt_fbc,type,width,h_stride
  * out: stride_w
  *
- * in:  fmt_fbc,type,height
+ * in:  fmt_fbc,type,height,v_stride
  * out: stride_h
  *
- * in:  fmt_fbc,type,fmt_codec,width
+ * in:  fmt_fbc,type,fmt_codec,width,h_stride
  * out: h_stride_by_byte
  *
- * in:  fmt_fbc,type,fmt_codec,width,height
+ * in:  fmt_fbc,type,fmt_codec,width,height,h_stride,v_stride
  * out: buffer_size
  */
 MPP_RET mpp_sys_dec_buf_chk_proc(MppSysDecBufChkCfg *cfg)
@@ -282,46 +286,60 @@ MPP_RET mpp_sys_dec_buf_chk_proc(MppSysDecBufChkCfg *cfg)
                                           (cfg->fmt_hdr & MPP_FRAME_HDR_MASK));
     MppFrameFormat fmt_raw = cfg->fmt_codec;
 
+    RK_U32 aligned_pixel = 0;
+    RK_U32 aligned_pixel_byte = 0;
+    RK_U32 aligned_byte = 0;
+    RK_U32 aligned_height = 0;
+    RK_U32 size_total = 0;
+    RK_U32 size_total_old = 0;
+    RK_U32 depth = MPP_FRAME_FMT_IS_YUV_10BIT(fmt) ? 10 : 8;
+
     if (type == MPP_VIDEO_CodingUnused) {
         mpp_err("The coding type is invalid");
         return MPP_NOK;
     }
 
+    /* use codec stride */
+    if (cfg->h_stride_by_byte)
+        aligned_pixel = cfg->h_stride_by_byte * 8 / depth;
+    if (cfg->v_stride)
+        aligned_height = cfg->v_stride;
+
+    sys_cfg_dbg_dec_buf("org pixel wxh: [%d %d]\n", cfg->width, cfg->height);
+    sys_cfg_dbg_dec_buf("outside stride wxh: [%d %d]\n",
+                        cfg->h_stride_by_byte, cfg->v_stride);
     if (MPP_FRAME_FMT_IS_FBC(fmt)) {
         /* fbc case */
-        RK_U32 aligned_pixel;
-        RK_U32 aligned_pixel_byte;
-        RK_U32 aligned_byte;
-        RK_U32 aligned_height;
-        RK_U32 size_total;
-
         switch (type) {
         case MPP_VIDEO_CodingHEVC :
         case MPP_VIDEO_CodingAV1 : {
             aligned_pixel = MPP_ALIGN(cfg->width, 64);
-            aligned_height = MPP_ALIGN(cfg->height, 8);
+            aligned_height = MPP_ALIGN(aligned_height ? aligned_height : cfg->height, 16);
         } break;
         case MPP_VIDEO_CodingAVC :
         case MPP_VIDEO_CodingAVSPLUS :
         case MPP_VIDEO_CodingAVS :
         case MPP_VIDEO_CodingAVS2 : {
             aligned_pixel = MPP_ALIGN(cfg->width, 64);
-            aligned_height = MPP_ALIGN(cfg->height, 16);
+            aligned_height = MPP_ALIGN(aligned_height ? aligned_height : cfg->height, 16);
         } break;
         case MPP_VIDEO_CodingVP9 : {
             aligned_pixel = MPP_ALIGN(cfg->width, 64);
-            aligned_height = MPP_ALIGN(cfg->height, 64);
+            aligned_height = MPP_ALIGN(aligned_height ? aligned_height : cfg->height, 64);
         } break;
         default : {
             aligned_pixel = MPP_ALIGN(cfg->width, 16);
-            aligned_height = MPP_ALIGN(cfg->height, 16);
+            aligned_height = MPP_ALIGN(aligned_height ? aligned_height : cfg->height, 16);
         } break;
         }
+        sys_cfg_dbg_dec_buf("spec aligned pixel wxh: [%d %d]\n", aligned_pixel, aligned_height);
 
-        if (MPP_FRAME_FMT_IS_YUV_10BIT(fmt))
-            aligned_pixel_byte = aligned_pixel * 10 / 8;
+        /*fbc stride default 64 align*/
+        if (*compat_ext_fbc_hdr_256_odd)
+            aligned_pixel_byte = (MPP_ALIGN(aligned_pixel, 256) | 256) * depth >> 3;
         else
-            aligned_pixel_byte = aligned_pixel;
+            aligned_pixel_byte = MPP_ALIGN(aligned_pixel, 64) * depth >> 3;
+        sys_cfg_dbg_dec_buf("need 256 odd align: %d\n", *compat_ext_fbc_hdr_256_odd);
 
         switch (type) {
         case MPP_VIDEO_CodingAVC :
@@ -343,6 +361,7 @@ MPP_RET mpp_sys_dec_buf_chk_proc(MppSysDecBufChkCfg *cfg)
             aligned_byte = MPP_ALIGN(aligned_pixel_byte, 16);
         } break;
         }
+        sys_cfg_dbg_dec_buf("dec hw aligned hor_byte: [%d]\n", aligned_byte);
 
         cfg->h_stride_by_byte = aligned_byte;
         cfg->h_stride_by_pixel = aligned_pixel;
@@ -351,6 +370,9 @@ MPP_RET mpp_sys_dec_buf_chk_proc(MppSysDecBufChkCfg *cfg)
         switch ((fmt_raw & MPP_FRAME_FMT_MASK)) {
         case MPP_FMT_YUV420SP_10BIT : {
             size_total = get_afbc_min_size(aligned_pixel, aligned_height, 15);
+        } break;
+        case MPP_FMT_YUV422SP_10BIT : {
+            size_total = get_afbc_min_size(aligned_pixel, aligned_height, 20);
         } break;
         case MPP_FMT_YUV420SP : {
             size_total = get_afbc_min_size(aligned_pixel, aligned_height, 12);
@@ -366,42 +388,65 @@ MPP_RET mpp_sys_dec_buf_chk_proc(MppSysDecBufChkCfg *cfg)
             mpp_err("dec out fmt 0x%x is no support", fmt_raw & MPP_FRAME_FMT_MASK);
         } break;
         }
+        sys_cfg_dbg_dec_buf("res aligned_pixel %d\n", aligned_pixel);
+        sys_cfg_dbg_dec_buf("res aligned_byte %d\n", aligned_byte);
+        sys_cfg_dbg_dec_buf("res aligned_height %d\n", aligned_height);
+        sys_cfg_dbg_dec_buf("res GPU aligned size_total: [%d]\n", size_total);
 
         cfg->size_total = size_total;
     } else {
         /* tile case */
         /* raster case */
-        RK_U32 aligned_pixel;
-        RK_U32 aligned_pixel_byte;
-        RK_U32 aligned_byte;
-        RK_U32 aligned_height;
-        RK_U32 size_total;
         RockchipSocType soc_type = mpp_get_soc_type();
 
+        aligned_pixel = cfg->width;
         switch (type) {
-        case MPP_VIDEO_CodingHEVC :
-        case MPP_VIDEO_CodingVP9 : {
+        case MPP_VIDEO_CodingHEVC : {
             aligned_pixel = MPP_ALIGN(cfg->width, 64);
-            aligned_height = MPP_ALIGN(cfg->height, 64);
+            aligned_height = MPP_ALIGN(cfg->height, 8);
         } break;
-        case MPP_VIDEO_CodingAV1 : {
-            aligned_pixel = MPP_ALIGN(cfg->width, 128);
-            aligned_height = MPP_ALIGN(cfg->height, 128);
-        } break;
-        default : {
+        /*
+         * avc aligned to ctu
+         * p_Vid->width = p_Vid->PicWidthInMbs * 16
+         * p_Vid->height = p_Vid->FrameHeightInMbs * 16
+         */
+        case MPP_VIDEO_CodingAVC : {
             aligned_pixel = MPP_ALIGN(cfg->width, 16);
             aligned_height = MPP_ALIGN(cfg->height, 16);
         } break;
+        case MPP_VIDEO_CodingVP9 : {
+            if (soc_type == ROCKCHIP_SOC_RK3399)
+                aligned_height = MPP_ALIGN(cfg->height, 64);
+            else if (soc_type == ROCKCHIP_SOC_RK3588)
+                aligned_height = MPP_ALIGN(cfg->height, 16);
+            else
+                aligned_height = MPP_ALIGN(cfg->height, 8);
+        } break;
+        case MPP_VIDEO_CodingAV1 : {
+            aligned_height = MPP_ALIGN(cfg->height, 8);
+        } break;
+        case MPP_VIDEO_CodingVP8 :
+        case MPP_VIDEO_CodingH263 :
+        case MPP_VIDEO_CodingMPEG2 :
+        case MPP_VIDEO_CodingMPEG4 : {
+            aligned_height = MPP_ALIGN(cfg->height, 16);
+        } break;
+        case MPP_VIDEO_CodingAVS2 : {
+            aligned_pixel = MPP_ALIGN(cfg->width, 64);
+            aligned_height = MPP_ALIGN(cfg->height, 8);
+        } break;
+        default : {
+            aligned_height = MPP_ALIGN(cfg->height, 8);
+        } break;
         }
+        sys_cfg_dbg_dec_buf("spec aligned pixel wxh: [%d %d]\n", aligned_pixel, aligned_height);
 
-        if (MPP_FRAME_FMT_IS_YUV_10BIT(fmt))
-            aligned_pixel_byte = aligned_pixel * 10 / 8;
-        else
-            aligned_pixel_byte = aligned_pixel;
+        aligned_pixel_byte = cfg->h_stride_by_byte ? cfg->h_stride_by_byte :
+                             aligned_pixel * depth / 8;
 
         switch (type) {
         case MPP_VIDEO_CodingHEVC : {
-            aligned_byte = MPP_ALIGN(aligned_pixel_byte, 64);
+            aligned_byte = mpp_sys_cfg_align(SYS_CFG_ALIGN_64, aligned_pixel_byte);
         } break;
         case MPP_VIDEO_CodingVP9 : {
             if (soc_type == ROCKCHIP_SOC_RK3576)
@@ -411,43 +456,96 @@ MPP_RET mpp_sys_dec_buf_chk_proc(MppSysDecBufChkCfg *cfg)
                 aligned_byte = mpp_sys_cfg_align(SYS_CFG_ALIGN_256_ODD, aligned_pixel_byte);
         } break;
         case MPP_VIDEO_CodingAV1 : {
-            aligned_byte = MPP_ALIGN(aligned_pixel_byte, 128);
+            if (soc_type == ROCKCHIP_SOC_RK3588)
+                aligned_byte = mpp_sys_cfg_align(SYS_CFG_ALIGN_16, aligned_pixel_byte);
+            else
+                aligned_byte = mpp_sys_cfg_align(SYS_CFG_ALIGN_128, aligned_pixel_byte);
         } break;
         default : {
-            aligned_byte = MPP_ALIGN(aligned_pixel_byte, 16);
+            aligned_byte = mpp_sys_cfg_align(SYS_CFG_ALIGN_16, aligned_pixel_byte);
         } break;
         }
+        sys_cfg_dbg_dec_buf("dec hw aligned hor_byte: [%d %d]\n", aligned_byte);
 
-        if (aligned_byte > 1920 && type != MPP_VIDEO_CodingMJPEG) {
+        /*
+         * NOTE: rk3576 use 128 odd plus 64 for all non jpeg format
+         * all the other socs use 256 odd on larger than 1080p
+         */
+        if ((aligned_byte > 1920 || soc_type == ROCKCHIP_SOC_RK3576 || soc_type == ROCKCHIP_SOC_RK3399)
+            && type != MPP_VIDEO_CodingMJPEG) {
+            rk_s32 update = 0;
+
             switch (soc_type) {
+            case ROCKCHIP_SOC_RK3399 :
             case ROCKCHIP_SOC_RK3568 :
             case ROCKCHIP_SOC_RK3562 :
             case ROCKCHIP_SOC_RK3528 :
             case ROCKCHIP_SOC_RK3588 : {
                 aligned_byte = mpp_sys_cfg_align(SYS_CFG_ALIGN_256_ODD, aligned_byte);
+                update = 1;
             } break;
             case ROCKCHIP_SOC_RK3576 : {
                 aligned_byte = mpp_sys_cfg_align(SYS_CFG_ALIGN_128_ODD_PLUS_64, aligned_byte);
+                update = 1;
             } break;
             default : {
             } break;
             }
+
+            /*
+             * recalc aligned_pixel here
+             * NOTE: no RGB format here in fact
+             */
+            if (update) {
+                switch (fmt & MPP_FRAME_FMT_MASK) {
+                case MPP_FMT_YUV420SP_10BIT:
+                case MPP_FMT_YUV422SP_10BIT:
+                case MPP_FMT_YUV444SP_10BIT: {
+                    aligned_pixel = aligned_byte * 8 / 10;
+                } break;
+                case MPP_FMT_YUV422_YVYU:
+                case MPP_FMT_YUV422_YUYV:
+                case MPP_FMT_RGB565:
+                case MPP_FMT_BGR565: {
+                    aligned_pixel = aligned_byte / 2;
+                } break;
+                case MPP_FMT_RGB888:
+                case MPP_FMT_BGR888: {
+                    aligned_pixel = aligned_byte / 3;
+                } break;
+                default : {
+                    aligned_pixel = aligned_byte;
+                } break;
+                }
+            }
         }
+        sys_cfg_dbg_dec_buf("dec hw performance aligned hor_byte: [%d]\n", aligned_pixel);
 
         cfg->h_stride_by_byte = aligned_byte;
         cfg->h_stride_by_pixel = aligned_pixel;
         cfg->v_stride = aligned_height;
 
         size_total = aligned_byte * aligned_height;
+        size_total_old = size_total;
+        sys_cfg_dbg_dec_buf("fmt_raw %x\n", fmt_raw);
+        sys_cfg_dbg_dec_buf("res aligned_pixel %d\n", aligned_pixel);
+        sys_cfg_dbg_dec_buf("res aligned_byte %d\n", aligned_byte);
+        sys_cfg_dbg_dec_buf("res aligned_height %d\n", aligned_height);
+
         switch (fmt_raw) {
         case MPP_FMT_YUV420SP :
         case MPP_FMT_YUV420SP_10BIT :
         case MPP_FMT_YUV420P :
         case MPP_FMT_YUV420SP_VU : {
+            SysCfgAlignType align_type = SYS_CFG_ALIGN_LEN_DEFAULT;
+
+            /* hevc and vp9 - SYS_CFG_ALIGN_LEN_DEFAULT */
             if (type == MPP_VIDEO_CodingAV1)
-                size_total = mpp_sys_cfg_align(SYS_CFG_ALIGN_LEN_420_AV1, size_total);
-            else
-                size_total = mpp_sys_cfg_align(SYS_CFG_ALIGN_LEN_420, size_total);
+                align_type = SYS_CFG_ALIGN_LEN_420_AV1;
+            else if (type == MPP_VIDEO_CodingAVC)
+                align_type = SYS_CFG_ALIGN_LEN_420;
+
+            size_total = mpp_sys_cfg_align(align_type, size_total);
         } break;
         case MPP_FMT_YUV422SP :
         case MPP_FMT_YUV422SP_10BIT :
@@ -459,12 +557,16 @@ MPP_RET mpp_sys_dec_buf_chk_proc(MppSysDecBufChkCfg *cfg)
         case MPP_FMT_YUV422_VYUY :
         case MPP_FMT_YUV440SP :
         case MPP_FMT_YUV411SP : {
+            SysCfgAlignType align_type;
+
             if (type == MPP_VIDEO_CodingAVC)
-                size_total = mpp_sys_cfg_align(SYS_CFG_ALIGN_LEN_422_AVC, size_total);
+                align_type = SYS_CFG_ALIGN_LEN_422_AVC;
             else if (type == MPP_VIDEO_CodingAV1)
-                size_total = mpp_sys_cfg_align(SYS_CFG_ALIGN_LEN_422_AV1, size_total);
+                align_type = SYS_CFG_ALIGN_LEN_422_AV1;
             else
-                size_total = mpp_sys_cfg_align(SYS_CFG_ALIGN_LEN_422, size_total);
+                align_type = SYS_CFG_ALIGN_LEN_422;
+
+            size_total = mpp_sys_cfg_align(align_type, size_total);
         } break;
         case MPP_FMT_YUV400 : {
             /* do nothing */
@@ -478,6 +580,7 @@ MPP_RET mpp_sys_dec_buf_chk_proc(MppSysDecBufChkCfg *cfg)
             size_total = size_total * 3 / 2;
         }
         }
+        sys_cfg_dbg_dec_buf("res size total %d -> %d\n", size_total_old, size_total);
 
         cfg->size_total = size_total;
     }
@@ -519,7 +622,7 @@ MPP_RET mpp_sys_cfg_ioctl(MppSysCfg cfg)
             mpp_log_f("can not set readonly cfg %s\n", mpp_trie_info_name(node)); \
             return MPP_NOK; \
         } \
-        mpp_sys_cfg_dbg_set("name %s type %s\n", mpp_trie_info_name(node), \
+        sys_cfg_dbg_set("name %s type %s\n", mpp_trie_info_name(node), \
                             strof_cfg_type(info->data_type)); \
         MPP_RET ret = MPP_CFG_SET_##cfg_type(info, p, val); \
         return ret; \
@@ -545,7 +648,7 @@ MPP_CFG_SET_ACCESS(mpp_sys_cfg_set_st,  void *, St);
         if (CHECK_CFG_INFO(info, name, CFG_FUNC_TYPE_##cfg_type)) { \
             return MPP_NOK; \
         } \
-        mpp_sys_cfg_dbg_set("name %s type %s\n", mpp_trie_info_name(node), \
+        sys_cfg_dbg_set("name %s type %s\n", mpp_trie_info_name(node), \
                             strof_cfg_type(info->data_type)); \
         MPP_RET ret = MPP_CFG_GET_##cfg_type(info, p, val); \
         return ret; \

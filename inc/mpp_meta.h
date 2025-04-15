@@ -42,21 +42,6 @@
  * 2. Flow control metadata
  *
  */
-typedef enum MppMetaDataType_e {
-    /*
-     * mpp meta data of data flow
-     * reference counter will be used for these meta data type
-     */
-    TYPE_FRAME                  = FOURCC_META('m', 'f', 'r', 'm'),
-    TYPE_PACKET                 = FOURCC_META('m', 'p', 'k', 't'),
-    TYPE_BUFFER                 = FOURCC_META('m', 'b', 'u', 'f'),
-
-    /* mpp meta data of normal data type */
-    TYPE_S32                    = FOURCC_META('s', '3', '2', ' '),
-    TYPE_S64                    = FOURCC_META('s', '6', '4', ' '),
-    TYPE_PTR                    = FOURCC_META('p', 't', 'r', ' '),
-} MppMetaType;
-
 typedef enum MppMetaKey_e {
     /* data flow key */
     KEY_INPUT_FRAME             = FOURCC_META('i', 'f', 'r', 'm'),
@@ -84,6 +69,7 @@ typedef enum MppMetaKey_e {
     KEY_ROI_DATA                = FOURCC_META('r', 'o', 'i', ' '),
     KEY_OSD_DATA                = FOURCC_META('o', 's', 'd', ' '),
     KEY_OSD_DATA2               = FOURCC_META('o', 's', 'd', '2'),
+    KEY_OSD_DATA3               = FOURCC_META('o', 's', 'd', '3'),
     KEY_USER_DATA               = FOURCC_META('u', 's', 'r', 'd'),
     KEY_USER_DATAS              = FOURCC_META('u', 'r', 'd', 's'),
 
@@ -99,8 +85,13 @@ typedef enum MppMetaKey_e {
     KEY_LVL4_INTRA_NUM          = FOURCC_META('l', '4', 'i', ' '),
     /* output P skip frame indicator */
     KEY_OUTPUT_PSKIP            = FOURCC_META('o', 'p', 's', 'p'),
-    /* input P skip frame request */
+    /*
+     * Input P-skip frame request
+     * KEY_INPUT_PSKIP: The skip frame will be referenced in the next frame.
+     * KEY_INPUT_PSKIP_NON_REF: The skip frame will not be referenced as a frame.
+     */
     KEY_INPUT_PSKIP             = FOURCC_META('i', 'p', 's', 'p'),
+    KEY_INPUT_PSKIP_NON_REF     = FOURCC_META('i', 'p', 'n', 'r'),
     KEY_ENC_SSE                 = FOURCC_META('e', 's', 's', 'e'),
 
     /*

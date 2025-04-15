@@ -309,7 +309,7 @@ static void avs2d_refine_rcb_size(Vdpu383RcbInfo *rcb_info,
     if (width > 4096)
         filterd_row_append = 27648;
     rcb_bits = MPP_ALIGN(width, 64) * (30 * bit_depth + 9);
-    rcb_info[RCB_FILTERD_ROW].size = MPP_RCB_BYTES(rcb_bits / 2);
+    rcb_info[RCB_FILTERD_ROW].size = filterd_row_append + MPP_RCB_BYTES(rcb_bits / 2);
     rcb_info[RCB_FILTERD_PROTECT_ROW].size = filterd_row_append + MPP_RCB_BYTES(rcb_bits / 2);
     rcb_info[RCB_FILTERD_TILE_ROW].size = 0;
 
@@ -638,7 +638,8 @@ MPP_RET hal_avs2d_vdpu383_gen_regs(void *hal, HalTaskInfo *task)
     AVS2D_HAL_TRACE("In.");
 
     INP_CHECK(ret, NULL == p_hal);
-    if (task->dec.flags.parse_err || task->dec.flags.ref_err) {
+    if ((task->dec.flags.parse_err || task->dec.flags.ref_err) &&
+        !p_hal->cfg->base.disable_error) {
         ret = MPP_NOK;
         goto __RETURN;
     }
@@ -717,8 +718,8 @@ MPP_RET hal_avs2d_vdpu383_start(void *hal, HalTaskInfo *task)
     AVS2D_HAL_TRACE("In.");
     INP_CHECK(ret, NULL == p_hal);
 
-    if (task->dec.flags.parse_err ||
-        task->dec.flags.ref_err) {
+    if ((task->dec.flags.parse_err || task->dec.flags.ref_err) &&
+        !p_hal->cfg->base.disable_error) {
         goto __RETURN;
     }
 
@@ -891,7 +892,8 @@ MPP_RET hal_avs2d_vdpu383_wait(void *hal, HalTaskInfo *task)
     reg_ctx = (Avs2dRkvRegCtx_t *)p_hal->reg_ctx;
     regs = p_hal->fast_mode ? reg_ctx->reg_buf[task->dec.reg_index].regs : reg_ctx->regs;
 
-    if (task->dec.flags.parse_err || task->dec.flags.ref_err) {
+    if ((task->dec.flags.parse_err || task->dec.flags.ref_err) &&
+        !p_hal->cfg->base.disable_error) {
         AVS2D_HAL_DBG(AVS2D_HAL_DBG_ERROR, "found task error.\n");
         ret = MPP_NOK;
         goto __RETURN;

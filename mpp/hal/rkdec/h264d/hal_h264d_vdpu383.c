@@ -671,6 +671,11 @@ MPP_RET vdpu383_h264d_init(void *hal, MppHalCfg *cfg)
     mpp_slots_set_prop(p_hal->frame_slots, SLOTS_VER_ALIGN, rkv_ver_align);
     mpp_slots_set_prop(p_hal->frame_slots, SLOTS_LEN_ALIGN, rkv_len_align);
 
+    if (cfg->hal_fbc_adj_cfg) {
+        cfg->hal_fbc_adj_cfg->func = vdpu383_afbc_align_calc;
+        cfg->hal_fbc_adj_cfg->expand = 16;
+    }
+
 __RETURN:
     return MPP_OK;
 __FAILED:
@@ -757,7 +762,7 @@ static void h264d_refine_rcb_size(H264dHalCtx_t *p_hal, Vdpu383RcbInfo *rcb_info
     rcb_bits = width * 17 * ((6 + 3 * row_uv_para) * (mbaff ? 2 : 1) + 2 * row_uv_para + 1.5);
     if (width > 4096)
         filterd_row_append = 27648;
-    rcb_info[RCB_FILTERD_ROW].size = MPP_RCB_BYTES(rcb_bits / 2);
+    rcb_info[RCB_FILTERD_ROW].size = filterd_row_append + MPP_RCB_BYTES(rcb_bits / 2);
     rcb_info[RCB_FILTERD_PROTECT_ROW].size = filterd_row_append + MPP_RCB_BYTES(rcb_bits / 2);
 
     rcb_info[RCB_FILTERD_TILE_ROW].size = 0;
@@ -818,7 +823,7 @@ MPP_RET vdpu383_h264d_gen_regs(void *hal, HalTaskInfo *task)
     INP_CHECK(ret, NULL == p_hal);
 
     if (task->dec.flags.parse_err ||
-        task->dec.flags.ref_err) {
+        (task->dec.flags.ref_err && !p_hal->cfg->base.disable_error)) {
         goto __RETURN;
     }
 
@@ -920,7 +925,7 @@ MPP_RET vdpu383_h264d_start(void *hal, HalTaskInfo *task)
     INP_CHECK(ret, NULL == p_hal);
 
     if (task->dec.flags.parse_err ||
-        task->dec.flags.ref_err) {
+        (task->dec.flags.ref_err && !p_hal->cfg->base.disable_error)) {
         goto __RETURN;
     }
 
@@ -1006,7 +1011,7 @@ MPP_RET vdpu383_h264d_wait(void *hal, HalTaskInfo *task)
                                  reg_ctx->regs;
 
     if (task->dec.flags.parse_err ||
-        task->dec.flags.ref_err) {
+        (task->dec.flags.ref_err && !p_hal->cfg->base.disable_error)) {
         goto __SKIP_HARD;
     }
 

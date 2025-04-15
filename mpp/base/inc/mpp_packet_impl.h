@@ -22,8 +22,13 @@
 #define MPP_PACKET_FLAG_EOS             (0x00000001)
 #define MPP_PACKET_FLAG_EXTRA_DATA      (0x00000002)
 #define MPP_PACKET_FLAG_INTERNAL        (0x00000004)
+#define MPP_PACKET_FLAG_INTRA           (0x00000010)
+#define MPP_PACKET_FLAG_PARTITION       (0x00000020)
+#define MPP_PACKET_FLAG_EOI             (0x00000040)
 
 #define MPP_PKT_SEG_CNT_DEFAULT         8
+
+typedef void (*ReleaseCb)(void *ctx, void *arg);
 
 typedef union MppPacketStatus_t {
     RK_U32  val;
@@ -74,6 +79,11 @@ typedef struct MppPacketImpl_t {
     MppPktSeg       segments_def[MPP_PKT_SEG_CNT_DEFAULT];
     MppPktSeg       *segments_ext;
     MppPktSeg       *segments;
+
+    /* release callback info */
+    ReleaseCb       release;
+    void            *release_ctx;
+    void            *release_arg;
 } MppPacketImpl;
 
 #ifdef __cplusplus
@@ -95,6 +105,7 @@ void    mpp_packet_reset_segment(MppPacket packet);
 void    mpp_packet_set_segment_nb(MppPacket packet, RK_U32 segment_nb);
 MPP_RET mpp_packet_add_segment_info(MppPacket packet, RK_S32 type, RK_S32 offset, RK_S32 len);
 void    mpp_packet_copy_segment_info(MppPacket dst, MppPacket src);
+void    mpp_packet_set_release(MppPacket packet, ReleaseCb release, void *ctx, void *arg);
 
 /* pointer check function */
 MPP_RET check_is_mpp_packet_f(void *ptr, const char *caller);

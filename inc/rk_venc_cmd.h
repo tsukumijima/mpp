@@ -239,7 +239,6 @@ typedef enum MppEncRcCfgChange_e {
     MPP_ENC_RC_CFG_CHANGE_REFRESH       = (1 << 27),
     MPP_ENC_RC_CFG_CHANGE_GOP_REF_CFG   = (1 << 28),
     MPP_ENC_RC_CFG_CHANGE_FQP           = (1 << 29),
-    MPP_ENC_RC_CFG_CHANGE_QPDD          = (1 << 30),
     MPP_ENC_RC_CFG_CHANGE_ALL           = (0xFFFFFFFF),
 } MppEncRcCfgChange;
 
@@ -417,7 +416,6 @@ typedef struct MppEncRcCfg_t {
     RK_S32                  fqp_min_p;
     RK_S32                  fqp_max_i;
     RK_S32                  fqp_max_p;
-    RK_S32                  cu_qp_delta_depth;
     RK_S32                  mt_st_swth_frm_qp;
 
     RK_S32                  hier_qp_en;
@@ -1068,6 +1066,7 @@ typedef struct MppEncH265DblkCfg_t {
 typedef struct MppEncH265SaoCfg_t {
     RK_U32  slice_sao_luma_disable;
     RK_U32  slice_sao_chroma_disable;
+    RK_U32  sao_bit_ratio;
 } MppEncH265SaoCfg;
 
 typedef struct MppEncH265TransCfg_t {
@@ -1076,6 +1075,7 @@ typedef struct MppEncH265TransCfg_t {
     RK_U32  defalut_ScalingList_enable;             /* default: 0 */
     RK_S32  cb_qp_offset;
     RK_S32  cr_qp_offset;
+    RK_S32  diff_cu_qp_delta_depth;
 } MppEncH265TransCfg;
 
 typedef struct MppEncH265MergeCfg_t {
@@ -1535,13 +1535,13 @@ typedef enum MppEncFineTuneCfgChange_e {
     MPP_ENC_TUNE_CFG_CHANGE_RC_CONTAINER        = (1 << 13),
     MPP_ENC_TUNE_CFG_CHANGE_VMAF_OPT            = (1 << 14),
     MPP_ENC_TUNE_CFG_CHANGE_MOTION_STATIC_SWITCH_ENABLE = (1 << 15),
-    MPP_ENC_TUNE_CFG_CHANGE_ATR_STR             = (1 << 16),
-    MPP_ENC_TUNE_CFG_CHANGE_ATF_STR             = (1 << 17),
-    MPP_ENC_TUNE_CFG_CHANGE_LGT_CHG_LVL         = (1 << 18),
-    MPP_ENC_TUNE_CFG_CHANGE_STATIC_FRM_NUM      = (1 << 19),
-    MPP_ENC_TUNE_CFG_CHANGE_MADP16_TH           = (1 << 20),
-    MPP_ENC_TUNE_CFG_CHANGE_SKIP16_WGT          = (1 << 21),
-    MPP_ENC_TUNE_CFG_CHANGE_SKIP32_WGT          = (1 << 22),
+    MPP_ENC_TUNE_CFG_CHANGE_ATF_STR             = (1 << 16),
+    MPP_ENC_TUNE_CFG_CHANGE_LGT_CHG_LVL         = (1 << 17),
+    MPP_ENC_TUNE_CFG_CHANGE_STATIC_FRM_NUM      = (1 << 18),
+    MPP_ENC_TUNE_CFG_CHANGE_MADP16_TH           = (1 << 19),
+    MPP_ENC_TUNE_CFG_CHANGE_SKIP16_WGT          = (1 << 20),
+    MPP_ENC_TUNE_CFG_CHANGE_SKIP32_WGT          = (1 << 21),
+    MPP_ENC_TUNE_CFG_CHANGE_SPEED               = (1 << 22),
     MPP_ENC_TUNE_CFG_CHANGE_ALL                 = (0xFFFFFFFF),
 } MppEncFineTuneCfgChange;
 
@@ -1563,7 +1563,6 @@ typedef struct MppEncFineTuneCfg_t {
     RK_S32              vmaf_opt;
 
     RK_S32              motion_static_switch_enable;
-    RK_S32              atr_str;/* maybe use atr_str_i/p */
     RK_S32              atf_str;
     /* vepu500 only */
     RK_S32              lgt_chg_lvl; /* light change level, [0, 3] */
@@ -1571,6 +1570,9 @@ typedef struct MppEncFineTuneCfg_t {
     RK_S32              madp16_th; /* madp threshold for static block detection, [0, 63] */
     RK_S32              skip16_wgt; /* weight for skip16, 0 or [3, 8] */
     RK_S32              skip32_wgt; /* weight for skip32, 0 or [3, 8] */
+    RK_S32              qpmap_en;
+    RK_S32              speed; /*enc speed [0..3], 0:full mode; 1:fast; 2:faster; 3:fastest */
+    RK_S32              reserved[4];
 } MppEncFineTuneCfg;
 
 #endif /*__RK_VENC_CMD_H__*/

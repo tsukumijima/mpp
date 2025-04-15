@@ -194,6 +194,7 @@ MPP_RET h265e_set_sps(H265eCtx *ctx, H265eSps *sps, H265eVps *vps)
     RK_S32 minCUSize, log2MinCUSize;
     RK_S32 tuQTMinLog2Size = 2, tuQTMaxLog2Size;
     MppEncCpbInfo *cpb_info = mpp_enc_ref_cfg_get_cpb_info(ref_cfg);
+    RockchipSocType soc_type;
     RK_U32 *tmp = &sps->zscan2raster[0];
 
     memset(convertToBit, -1, sizeof(convertToBit));
@@ -208,7 +209,8 @@ MPP_RET h265e_set_sps(H265eCtx *ctx, H265eSps *sps, H265eVps *vps)
     minCUDepth = (codec->max_cu_size >> (maxCUDepth - 1));
 
     tuQTMaxLog2Size = convertToBit[codec->max_cu_size] + 2 - 1;
-    if (mpp_get_soc_type() == ROCKCHIP_SOC_RK3576) {
+    soc_type = mpp_get_soc_type();
+    if (soc_type == ROCKCHIP_SOC_RK3576 || soc_type == ROCKCHIP_SOC_RV1126B) {
         tuQTMaxLog2Size = tuQTMaxLog2Size + 1;
     }
 
@@ -400,14 +402,13 @@ MPP_RET h265e_set_sps(H265eCtx *ctx, H265eSps *sps, H265eVps *vps)
 MPP_RET h265e_set_pps(H265eCtx  *ctx, H265ePps *pps, H265eSps *sps)
 {
     MppEncH265Cfg *codec = &ctx->cfg->codec.h265;
-    MppEncRcCfg *rc = &ctx->cfg->rc;
 
     pps->m_bConstrainedIntraPred = codec->const_intra_pred;
     pps->m_PPSId = 0;
     pps->m_SPSId = 0;
     pps->m_picInitQPMinus26 = 0;
     pps->m_useDQP = 1;
-    pps->m_maxCuDQPDepth = rc->cu_qp_delta_depth;
+    pps->m_maxCuDQPDepth = codec->trans_cfg.diff_cu_qp_delta_depth;
     pps->m_minCuDQPSize = (sps->m_maxCUSize >> pps->m_maxCuDQPDepth);
 
     pps->m_sps = sps;

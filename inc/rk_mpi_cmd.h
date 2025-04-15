@@ -55,7 +55,7 @@
 #define CMD_ENC_CFG_REF                 (0x00008200)
 #define CMD_ENC_CFG_ROI                 (0x00008300)
 #define CMD_ENC_CFG_OSD                 (0x00008400)
-#define CMD_ENC_INSRT_USERDATA          (0x00008500)
+#define CMD_ENC_CFG_USERDATA            (0x00008500)
 
 typedef enum {
     MPP_OSAL_CMD_BASE                   = CMD_MODULE_OSAL,
@@ -76,8 +76,8 @@ typedef enum {
     MPP_SET_INPUT_TIMEOUT,              /* parameter type RK_S64 */
     MPP_SET_OUTPUT_TIMEOUT,             /* parameter type RK_S64 */
     MPP_SET_DISABLE_THREAD,             /* MPP no thread mode and use external thread to decode */
-    MPP_SET_SELECT_TIMEOUT,
-    MPP_SET_VENC_INIT_KCFG,
+    MPP_SET_SELECT_TIMEOUT,             /* kmpp path select operation timeout */
+    MPP_SET_VENC_INIT_KCFG,             /* kmpp path venc init cfg set */
 
     MPP_STATE_CMD_BASE                  = CMD_MODULE_MPP | CMD_STATE_OPS,
     MPP_START,
@@ -111,8 +111,8 @@ typedef enum {
     MPP_DEC_SET_ENABLE_MVC,             /* enable MVC decoding*/
     MPP_DEC_GET_THUMBNAIL_FRAME_INFO,   /* update thumbnail frame info to user, for MPP_FRAME_THUMBNAIL_ONLY mode */
     MPP_DEC_SET_DISABLE_DPB_CHECK,      /* disable dpb discontinuous check */
-    /* select codec mode */
-    MPP_DEC_SET_CODEC_MODE              = CMD_MODULE_CODEC | CMD_CTX_ID_DEC | 0x14,
+    MPP_DEC_SET_CODEC_MODE,             /* select codec mode */
+    MPP_DEC_SET_DIS_ERR_CLR_MARK,
 
     MPP_DEC_CMD_QUERY                   = CMD_MODULE_CODEC | CMD_CTX_ID_DEC | CMD_DEC_QUERY,
     /* query decoder runtime information for decode stage */
@@ -147,8 +147,7 @@ typedef enum {
     MPP_ENC_SET_QP_RANGE,               /* used for adjusting qp range, the parameter can be 1 or 2 */
     MPP_ENC_SET_ROI_CFG,                /* set MppEncROICfg structure */
     MPP_ENC_SET_CTU_QP,                 /* for H265 Encoder,set CTU's size and QP */
-    MPP_ENC_GET_ROI_CFG,
-    MPP_ENC_SET_CHANGE_STREAM_TYPE,
+    MPP_ENC_GET_ROI_CFG,                /* get MppEncROICfg structure */
 
     MPP_ENC_CMD_QUERY                   = CMD_MODULE_CODEC | CMD_CTX_ID_ENC | CMD_ENC_QUERY,
     /* query encoder runtime information for encode stage */
@@ -199,7 +198,9 @@ typedef enum {
     MPP_ENC_GET_OSD_PLT_CFG,            /* get OSD palette, parameter should be pointer to MppEncOSDPltCfg */
     MPP_ENC_SET_OSD_DATA_CFG,           /* set OSD data with at most 8 regions, parameter should be pointer to MppEncOSDData */
 
-    MPP_ENC_INSRT_USERDATA               = CMD_MODULE_CODEC | CMD_CTX_ID_ENC | CMD_ENC_INSRT_USERDATA,
+    MPP_ENC_CFG_USERDATA                = CMD_MODULE_CODEC | CMD_CTX_ID_ENC | CMD_ENC_CFG_USERDATA,
+    MPP_ENC_SET_USERDATA,
+    MPP_ENC_GET_USERDATA,
     MPP_ENC_CMD_END,
 
     MPP_ISP_CMD_BASE                    = CMD_MODULE_CODEC | CMD_CTX_ID_ISP,

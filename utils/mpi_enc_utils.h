@@ -83,12 +83,15 @@ typedef struct MpiEncTestArgs_t {
     /* -qpdd cu_qp_delta_depth */
     RK_S32              cu_qp_delta_depth;
     RK_S32              anti_flicker_str;
+    RK_S32              atf_str;
     RK_S32              atr_str_i;
     RK_S32              atr_str_p;
     RK_S32              atl_str;
     RK_S32              sao_str_i;
     RK_S32              sao_str_p;
-
+    RK_S32              lambda_idx_p;
+    RK_S32              lambda_idx_i;
+    RK_S32              speed;
     /* -dbe deblur enable flag
      * -dbs deblur strength
      */
@@ -103,6 +106,7 @@ typedef struct MpiEncTestArgs_t {
     RK_U32              psnr_en;
     RK_U32              ssim_en;
     char                *file_slt;
+    RK_U32              kmpp_en;
 } MpiEncTestArgs;
 
 #ifdef __cplusplus

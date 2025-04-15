@@ -36,6 +36,12 @@
 
 RK_U32 h264d_debug = 0;
 
+// for mblock 16 coded width align
+static RK_U32 rkv_mblock_width_align(RK_U32 val)
+{
+    return MPP_ALIGN(val, 16);
+}
+
 static MPP_RET free_input_ctx(H264dInputCtx_t *p_Inp)
 {
     MPP_RET ret = MPP_ERR_UNKNOW;
@@ -353,6 +359,7 @@ MPP_RET h264d_init(void *decoder, ParserCfg *init)
                     p_Dec->cfg->base.enable_fast_play);
     H264D_LOG("fast play mode: %d", p_Dec->p_Vid->dpb_fast_out);
     p_Dec->p_Vid->dpb_first_fast_played = 0;
+    mpp_slots_set_prop(p_Dec->frame_slots, SLOTS_WIDTH_ALIGN, rkv_mblock_width_align);
 __RETURN:
     return ret = MPP_OK;
 __FAILED:
@@ -652,8 +659,7 @@ MPP_RET h264d_parse(void *decoder, HalDecTask *in_task)
         in_task->syntax.number = p_Dec->dxva_ctx->syn.num;
         in_task->syntax.data   = (void *)p_Dec->dxva_ctx->syn.buf;
         in_task->flags.used_for_ref = p_err->used_ref_flag;
-        in_task->flags.ref_err |= (!p_Dec->cfg->base.disable_error
-                                   && (p_err->dpb_err_flag | p_err->cur_err_flag)) ? 1 : 0;
+        in_task->flags.ref_err |= (p_err->dpb_err_flag | p_err->cur_err_flag) ? 1 : 0;
     }
 
     return ret;

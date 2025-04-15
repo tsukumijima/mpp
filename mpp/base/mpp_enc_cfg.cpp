@@ -79,7 +79,6 @@ public:
     do { \
         MppCfgInfo tmp = { \
             CFG_FUNC_TYPE_##cfg_type, \
-            (RK_U32)((flag) ? 1 : 0), \
             (RK_U32)((long)&(((MppEncCfgSet *)0)->field_change.change)), \
             flag, \
             (RK_U32)((long)&(((MppEncCfgSet *)0)->field_change.field_data)), \
@@ -139,7 +138,6 @@ public:
     ENTRY(rc,   fqp_min_p,      S32,        MPP_ENC_RC_CFG_CHANGE_FQP,              rc, fqp_min_p) \
     ENTRY(rc,   fqp_max_i,      S32,        MPP_ENC_RC_CFG_CHANGE_FQP,              rc, fqp_max_i) \
     ENTRY(rc,   fqp_max_p,      S32,        MPP_ENC_RC_CFG_CHANGE_FQP,              rc, fqp_max_p) \
-    ENTRY(rc,   cu_qp_delta_depth, S32,     MPP_ENC_RC_CFG_CHANGE_QPDD,             rc, cu_qp_delta_depth) \
     ENTRY(rc,   mt_st_swth_frm_qp, S32,     MPP_ENC_RC_CFG_CHANGE_FQP,              rc, mt_st_swth_frm_qp) \
     /* prep config */ \
     ENTRY(prep, width,          S32,        MPP_ENC_PREP_CFG_CHANGE_INPUT,          prep, width) \
@@ -202,6 +200,7 @@ public:
     ENTRY(h265, scaling_list,   U32,        MPP_ENC_H265_CFG_TRANS_CHANGE,                  codec.h265, trans_cfg.defalut_ScalingList_enable) \
     ENTRY(h265, cb_qp_offset,   S32,        MPP_ENC_H265_CFG_TRANS_CHANGE,                  codec.h265, trans_cfg.cb_qp_offset) \
     ENTRY(h265, cr_qp_offset,   S32,        MPP_ENC_H265_CFG_TRANS_CHANGE,                  codec.h265, trans_cfg.cr_qp_offset) \
+    ENTRY(h265, diff_cu_qp_delta_depth, S32, MPP_ENC_H265_CFG_TRANS_CHANGE,                 codec.h265, trans_cfg.diff_cu_qp_delta_depth) \
     ENTRY(h265, dblk_disable,   U32,        MPP_ENC_H265_CFG_DBLK_CHANGE,                   codec.h265, dblk_cfg.slice_deblocking_filter_disabled_flag) \
     ENTRY(h265, dblk_alpha,     S32,        MPP_ENC_H265_CFG_DBLK_CHANGE,                   codec.h265, dblk_cfg.slice_beta_offset_div2) \
     ENTRY(h265, dblk_beta,      S32,        MPP_ENC_H265_CFG_DBLK_CHANGE,                   codec.h265, dblk_cfg.slice_tc_offset_div2) \
@@ -214,6 +213,7 @@ public:
     ENTRY(h265, qp_delta_ip,    S32,        MPP_ENC_RC_CFG_CHANGE_QP_IP,            rc, qp_delta_ip) \
     ENTRY(h265, sao_luma_disable,   S32,    MPP_ENC_H265_CFG_SAO_CHANGE,            codec.h265, sao_cfg.slice_sao_luma_disable) \
     ENTRY(h265, sao_chroma_disable, S32,    MPP_ENC_H265_CFG_SAO_CHANGE,            codec.h265, sao_cfg.slice_sao_chroma_disable) \
+    ENTRY(h265, sao_bit_ratio,  S32,        MPP_ENC_H265_CFG_SAO_CHANGE,            codec.h265, sao_cfg.sao_bit_ratio) \
     ENTRY(h265, lpf_acs_sli_en, U32,        MPP_ENC_H265_CFG_SLICE_LPFACS_CHANGE,   codec.h265, lpf_acs_sli_en) \
     ENTRY(h265, lpf_acs_tile_disable, U32,  MPP_ENC_H265_CFG_TILE_LPFACS_CHANGE,    codec.h265, lpf_acs_tile_disable) \
     ENTRY(h265, auto_tile,      S32,        MPP_ENC_H265_CFG_TILE_CHANGE,           codec.h265, auto_tile) \
@@ -269,21 +269,21 @@ public:
     ENTRY(tune, anti_flicker_str,S32,       MPP_ENC_TUNE_CFG_CHANGE_ANTI_FLICKER_STR,tune, anti_flicker_str) \
     ENTRY(tune, lambda_idx_i,   S32,        MPP_ENC_TUNE_CFG_CHANGE_LAMBDA_IDX_I,   tune, lambda_idx_i) \
     ENTRY(tune, lambda_idx_p,   S32,        MPP_ENC_TUNE_CFG_CHANGE_LAMBDA_IDX_P,   tune, lambda_idx_p) \
-    ENTRY(tune, atr_str_i,      S32,        MPP_ENC_TUNE_CFG_CHANGE_ATR_STR_I,   tune, atr_str_i) \
-    ENTRY(tune, atr_str_p,      S32,        MPP_ENC_TUNE_CFG_CHANGE_ATR_STR_P,   tune, atr_str_p) \
-    ENTRY(tune, atl_str,        S32,        MPP_ENC_TUNE_CFG_CHANGE_ATL_STR,     tune, atl_str) \
-    ENTRY(tune, sao_str_i,      S32,        MPP_ENC_TUNE_CFG_CHANGE_SAO_STR_I,   tune, sao_str_i) \
-    ENTRY(tune, sao_str_p,      S32,        MPP_ENC_TUNE_CFG_CHANGE_SAO_STR_P,   tune, sao_str_p) \
+    ENTRY(tune, atr_str_i,      S32,        MPP_ENC_TUNE_CFG_CHANGE_ATR_STR_I,      tune, atr_str_i) \
+    ENTRY(tune, atr_str_p,      S32,        MPP_ENC_TUNE_CFG_CHANGE_ATR_STR_P,      tune, atr_str_p) \
+    ENTRY(tune, atl_str,        S32,        MPP_ENC_TUNE_CFG_CHANGE_ATL_STR,        tune, atl_str) \
+    ENTRY(tune, sao_str_i,      S32,        MPP_ENC_TUNE_CFG_CHANGE_SAO_STR_I,      tune, sao_str_i) \
+    ENTRY(tune, sao_str_p,      S32,        MPP_ENC_TUNE_CFG_CHANGE_SAO_STR_P,      tune, sao_str_p) \
     ENTRY(tune, rc_container,   S32,        MPP_ENC_TUNE_CFG_CHANGE_RC_CONTAINER,   tune, rc_container) \
     ENTRY(tune, vmaf_opt,       S32,        MPP_ENC_TUNE_CFG_CHANGE_VMAF_OPT,       tune, vmaf_opt) \
     ENTRY(tune, motion_static_switch_enable, S32, MPP_ENC_TUNE_CFG_CHANGE_MOTION_STATIC_SWITCH_ENABLE, tune, motion_static_switch_enable) \
-    ENTRY(tune, atr_str,        S32,        MPP_ENC_TUNE_CFG_CHANGE_ATR_STR,        tune, atr_str) \
     ENTRY(tune, atf_str,        S32,        MPP_ENC_TUNE_CFG_CHANGE_ATF_STR,        tune, atf_str) \
     ENTRY(tune, lgt_chg_lvl,    S32,        MPP_ENC_TUNE_CFG_CHANGE_LGT_CHG_LVL,    tune, lgt_chg_lvl) \
     ENTRY(tune, static_frm_num, S32,        MPP_ENC_TUNE_CFG_CHANGE_STATIC_FRM_NUM, tune, static_frm_num) \
     ENTRY(tune, madp16_th,      S32,        MPP_ENC_TUNE_CFG_CHANGE_MADP16_TH,      tune, madp16_th) \
     ENTRY(tune, skip16_wgt,     S32,        MPP_ENC_TUNE_CFG_CHANGE_SKIP16_WGT,     tune, skip16_wgt) \
-    ENTRY(tune, skip32_wgt,     S32,        MPP_ENC_TUNE_CFG_CHANGE_SKIP32_WGT,     tune, skip32_wgt)
+    ENTRY(tune, skip32_wgt,     S32,        MPP_ENC_TUNE_CFG_CHANGE_SKIP32_WGT,     tune, skip32_wgt) \
+    ENTRY(tune, speed,          S32,        MPP_ENC_TUNE_CFG_CHANGE_SPEED,          tune, speed)
 
 MppEncCfgService::MppEncCfgService() :
     mTrie(NULL)

@@ -89,7 +89,9 @@ static MPP_RET h265e_init(void *ctx, EncImplCfg *ctrlCfg)
     h265->const_intra_pred = 0;           /* constraint intra prediction flag */
 
     soc_type = mpp_get_soc_type();
-    if (soc_type == ROCKCHIP_SOC_RK3528 || soc_type == ROCKCHIP_SOC_RK3576)
+    if (soc_type == ROCKCHIP_SOC_RK3528 ||
+        soc_type == ROCKCHIP_SOC_RK3576 ||
+        soc_type == ROCKCHIP_SOC_RV1126B)
         h265->max_cu_size = 32;
     else
         h265->max_cu_size = 64;
@@ -109,6 +111,7 @@ static MPP_RET h265e_init(void *ctx, EncImplCfg *ctrlCfg)
     h265->merge_cfg.max_mrg_cnd = 2;
     h265->merge_cfg.merge_left_flag = 1;
     h265->merge_cfg.merge_up_flag = 1;
+    h265->trans_cfg.diff_cu_qp_delta_depth = 0;
     p->cfg->tune.scene_mode = MPP_ENC_SCENE_MODE_DEFAULT;
     p->cfg->tune.lambda_idx_i = 2;
     p->cfg->tune.lambda_idx_p = 4;
@@ -179,7 +182,6 @@ static MPP_RET h265e_init(void *ctx, EncImplCfg *ctrlCfg)
     rc_cfg->fqp_min_p = INT_MAX;
     rc_cfg->fqp_max_i = INT_MAX;
     rc_cfg->fqp_max_p = INT_MAX;
-    rc_cfg->cu_qp_delta_depth = 0;
     INIT_LIST_HEAD(&p->rc_list);
 
     h265e_dbg_func("leave ctx %p\n", ctx);
@@ -246,11 +248,13 @@ static MPP_RET h265e_start(void *ctx, HalEncTask *task)
         RK_S32 force_use_lt_idx = -1;
         RK_S32 force_frame_qp = -1;
         RK_S32 base_layer_pid = -1;
+        RK_S32 force_tid = -1;
 
         mpp_meta_get_s32(meta, KEY_ENC_MARK_LTR, &force_lt_idx);
         mpp_meta_get_s32(meta, KEY_ENC_USE_LTR, &force_use_lt_idx);
         mpp_meta_get_s32(meta, KEY_ENC_FRAME_QP, &force_frame_qp);
         mpp_meta_get_s32(meta, KEY_ENC_BASE_LAYER_PID, &base_layer_pid);
+        mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &force_tid);
 
         if (force_lt_idx >= 0) {
             frm_cfg->force_flag |= ENC_FORCE_LT_REF_IDX;
@@ -261,6 +265,11 @@ static MPP_RET h265e_start(void *ctx, HalEncTask *task)
             frm_cfg->force_flag |= ENC_FORCE_REF_MODE;
             frm_cfg->force_ref_mode = REF_TO_LT_REF_IDX;
             frm_cfg->force_ref_arg = force_use_lt_idx;
+        }
+
+        if (force_tid >= 0) {
+            frm_cfg->force_flag |= ENC_FORCE_TEMPORAL_ID;
+            frm_cfg->force_temporal_id = force_tid;
         }
 
         if (force_frame_qp >= 0) {
@@ -303,6 +312,7 @@ static MPP_RET h265e_proc_dpb(void *ctx, HalEncTask *task)
     H265eCtx *p = (H265eCtx *)ctx;
     EncRcTask    *rc_task = task->rc_task;
     EncCpbStatus *cpb = &task->rc_task->cpb;
+
     h265e_dbg_func("enter\n");
     h265e_dpb_proc_cpb(p->dpb, cpb);
     h265e_dpb_get_curr(p->dpb);
@@ -376,8 +386,9 @@ static MPP_RET h265e_proc_enc_skip(void *ctx, HalEncTask *task)
     new_length = h265e_code_slice_skip_frame(ctx, p->slice, ptr, len);
     task->length = new_length;
     task->rc_task->info.bit_real = 8 * new_length;
-    syntax->pre_ref_idx = syntax->sp.recon_pic.slot_idx;
+    p->dpb->curr->prev_ref_idx = syntax->sp.recon_pic.slot_idx;
     mpp_packet_add_segment_info(pkt, NAL_TRAIL_R, offset, new_length);
+    mpp_buffer_sync_partial_end(mpp_packet_get_buffer(pkt), offset, new_length);
 
     h265e_dbg_func("leave\n");
     return MPP_OK;
@@ -566,6 +577,10 @@ static MPP_RET h265e_proc_h265_cfg(MppEncH265Cfg *dst, MppEncH265Cfg *src)
             mpp_log("cr_qp_offset %d MUST equal to cb_qp_offset %d. FORCE to same value\n",
                     src->trans_cfg.cb_qp_offset, src->trans_cfg.cr_qp_offset);
             src->trans_cfg.cr_qp_offset = src->trans_cfg.cb_qp_offset;
+        }
+        if (src->trans_cfg.diff_cu_qp_delta_depth > 2 || src->trans_cfg.diff_cu_qp_delta_depth < 0) {
+            mpp_log("diff_cu_qp_delta_depth must be in [0, 2]\n");
+            src->trans_cfg.diff_cu_qp_delta_depth = 0;
         }
         memcpy(&dst->trans_cfg, &src->trans_cfg, sizeof(src->trans_cfg));
     }

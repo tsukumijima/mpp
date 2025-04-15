@@ -540,7 +540,16 @@ RK_S32 mpi_enc_opt_atf(void *ctx, const char *next)
     MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
 
     if (next) {
-        cmd->anti_flicker_str = atoi(next);
+        RK_S32 val = atoi(next);
+
+        if (val >= 0 && val <= 3 ) {
+            cmd->anti_flicker_str = val;
+            cmd->atf_str = val;
+        } else {
+            cmd->anti_flicker_str = 0;
+            cmd->atf_str = 0;
+            mpp_err("invalid atf_str %d set to default 0\n", val);
+        }
         return 1;
     }
 
@@ -652,6 +661,68 @@ RK_S32 mpi_enc_opt_bias_p(void *ctx, const char *next)
     return 0;
 }
 
+RK_S32 mpi_enc_opt_lmd(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->lambda_idx_p = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid lambda idx\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_lmdi(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->lambda_idx_i = atoi(next);
+        return 1;
+    }
+
+    mpp_err("invalid intra lambda idx\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_speed(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->speed = atoi(next);
+        if (cmd->speed > 3 || cmd->speed < 0) {
+            cmd->speed = 0;
+            mpp_err("invalid speed %d set to default 0\n", cmd->speed);
+        }
+        return 1;
+    }
+
+    mpp_err("invalid speed mode\n");
+    return 0;
+}
+
+RK_S32 mpi_enc_opt_kmpp(void *ctx, const char *next)
+{
+    MpiEncTestArgs *cmd = (MpiEncTestArgs *)ctx;
+
+    if (next) {
+        cmd->kmpp_en = atoi(next);
+        if (cmd->kmpp_en) {
+            if (access("/dev/vcodec", F_OK | R_OK | W_OK)) {
+                mpp_err("failed to access /dev/vcodec, check kmpp devices\n");
+                return -1;
+            }
+        }
+        return 1;
+    }
+
+    mpp_err("invalid kmpp enable\n");
+    return 0;
+}
+
 static MppOptInfo enc_opts[] = {
     {"i",       "input_file",           "input frame file",                         mpi_enc_opt_i},
     {"o",       "output_file",          "output encoded bitstream file",            mpi_enc_opt_o},
@@ -686,7 +757,12 @@ static MppOptInfo enc_opts[] = {
     {"sao_p",   "sao_str_p",            "sao_str_p, 0:off 1 2 3",                   mpi_enc_opt_sao_p},
     {"bc",      "bitrate container",    "rc_container, 0:off 1:weak 2:strong",      mpi_enc_opt_bc},
     {"ibias",   "bias i",               "bias_i",                                   mpi_enc_opt_bias_i},
-    {"pbias",   "bias p",               "bias_p",                                   mpi_enc_opt_bias_p}
+    {"pbias",   "bias p",               "bias_p",                                   mpi_enc_opt_bias_p},
+    {"lmd",     "lambda idx",           "lambda_idx_p 0~8",                         mpi_enc_opt_lmd},
+    {"lmdi",    "lambda i idx",         "lambda_idx_i 0~8",                         mpi_enc_opt_lmdi},
+    {"speed",   "enc speed",            "speed mode",                               mpi_enc_opt_speed},
+    {"atf",     "atf",                  "anti_flicker_str, 0:off 1 2 3",            mpi_enc_opt_atf},
+    {"kmpp",    "kmpp path enable",     "kmpp path enable",                         mpi_enc_opt_kmpp}
 };
 
 static RK_U32 enc_opt_cnt = MPP_ARRAY_ELEMS(enc_opts);

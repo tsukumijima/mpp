@@ -17,12 +17,14 @@
 #define MODULE_TAG "mpp_meta"
 
 #include <string.h>
+#include <endian.h>
 
 #include "mpp_mem.h"
 #include "mpp_list.h"
 #include "mpp_lock.h"
 
 #include "mpp_meta_impl.h"
+#include "mpp_trie.h"
 
 #define META_VAL_INVALID    (0x00000000)
 #define META_VAL_VALID      (0x00000001)
@@ -31,62 +33,78 @@
 #define WRITE_ONCE(x, val)  ((*(volatile typeof(x) *) &(x)) = (val))
 #define READ_ONCE(var)      (*((volatile typeof(var) *)(&(var))))
 
-static MppMetaDef meta_defs[] = {
+typedef enum MppMetaDataType_e {
+    /* mpp meta data of normal data type */
+    TYPE_VAL_32 = '3',
+    TYPE_VAL_64 = '6',
+    TYPE_KPTR   = 'k',
+    TYPE_UPTR   = 'u',
+    TYPE_SPTR   = 's',
+} MppMetaType;
+
+static inline RK_U64 META_KEY_TO_U64(RK_U32 key, RK_U32 type)
+{
+    return (RK_U64)((RK_U32)htobe32(key)) | ((RK_U64)type << 32);
+}
+
+static RK_U64 meta_defs[] = {
     /* categorized by type */
     /* data flow type */
-    {   KEY_INPUT_FRAME,        TYPE_FRAME,     },
-    {   KEY_OUTPUT_FRAME,       TYPE_FRAME,     },
-    {   KEY_INPUT_PACKET,       TYPE_PACKET,    },
-    {   KEY_OUTPUT_PACKET,      TYPE_PACKET,    },
+    META_KEY_TO_U64(KEY_INPUT_FRAME,        TYPE_SPTR),
+    META_KEY_TO_U64(KEY_OUTPUT_FRAME,       TYPE_SPTR),
+    META_KEY_TO_U64(KEY_INPUT_PACKET,       TYPE_SPTR),
+    META_KEY_TO_U64(KEY_OUTPUT_PACKET,      TYPE_SPTR),
     /* buffer for motion detection */
-    {   KEY_MOTION_INFO,        TYPE_BUFFER,    },
+    META_KEY_TO_U64(KEY_MOTION_INFO,        TYPE_SPTR),
     /* buffer storing the HDR information for current frame*/
-    {   KEY_HDR_INFO,           TYPE_BUFFER,    },
+    META_KEY_TO_U64(KEY_HDR_INFO,           TYPE_SPTR),
     /* the offset of HDR meta data in frame buffer */
-    {   KEY_HDR_META_OFFSET,    TYPE_S32,       },
-    {   KEY_HDR_META_SIZE,      TYPE_S32,       },
+    META_KEY_TO_U64(KEY_HDR_META_OFFSET,    TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_HDR_META_SIZE,      TYPE_VAL_32),
 
-    {   KEY_OUTPUT_INTRA,       TYPE_S32,       },
-    {   KEY_INPUT_BLOCK,        TYPE_S32,       },
-    {   KEY_OUTPUT_BLOCK,       TYPE_S32,       },
-    {   KEY_INPUT_IDR_REQ,      TYPE_S32,       },
+    META_KEY_TO_U64(KEY_OUTPUT_INTRA,       TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_INPUT_BLOCK,        TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_OUTPUT_BLOCK,       TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_INPUT_IDR_REQ,      TYPE_VAL_32),
 
     /* extra information for tsvc */
-    {   KEY_TEMPORAL_ID,        TYPE_S32,       },
-    {   KEY_LONG_REF_IDX,       TYPE_S32,       },
-    {   KEY_ENC_AVERAGE_QP,     TYPE_S32,       },
-    {   KEY_ENC_START_QP,       TYPE_S32,       },
-    {   KEY_ENC_BPS_RT,         TYPE_S32,       },
+    META_KEY_TO_U64(KEY_TEMPORAL_ID,        TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_LONG_REF_IDX,       TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_ENC_AVERAGE_QP,     TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_ENC_START_QP,       TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_ENC_BPS_RT,         TYPE_VAL_32),
 
-    {   KEY_ROI_DATA,           TYPE_PTR,       },
-    {   KEY_ROI_DATA2,          TYPE_PTR,       },
-    {   KEY_OSD_DATA,           TYPE_PTR,       },
-    {   KEY_OSD_DATA2,          TYPE_PTR,       },
-    {   KEY_USER_DATA,          TYPE_PTR,       },
-    {   KEY_USER_DATAS,         TYPE_PTR,       },
-    {   KEY_QPMAP0,             TYPE_BUFFER,    },
-    {   KEY_MV_LIST,            TYPE_PTR,       },
+    META_KEY_TO_U64(KEY_ROI_DATA,           TYPE_UPTR),
+    META_KEY_TO_U64(KEY_ROI_DATA2,          TYPE_UPTR),
+    META_KEY_TO_U64(KEY_OSD_DATA,           TYPE_UPTR),
+    META_KEY_TO_U64(KEY_OSD_DATA2,          TYPE_UPTR),
+    META_KEY_TO_U64(KEY_OSD_DATA3,          TYPE_UPTR),
+    META_KEY_TO_U64(KEY_USER_DATA,          TYPE_UPTR),
+    META_KEY_TO_U64(KEY_USER_DATAS,         TYPE_UPTR),
+    META_KEY_TO_U64(KEY_QPMAP0,             TYPE_SPTR),
+    META_KEY_TO_U64(KEY_MV_LIST,            TYPE_UPTR),
 
-    {   KEY_LVL64_INTER_NUM,    TYPE_S32,       },
-    {   KEY_LVL32_INTER_NUM,    TYPE_S32,       },
-    {   KEY_LVL16_INTER_NUM,    TYPE_S32,       },
-    {   KEY_LVL8_INTER_NUM,     TYPE_S32,       },
-    {   KEY_LVL32_INTRA_NUM,    TYPE_S32,       },
-    {   KEY_LVL16_INTRA_NUM,    TYPE_S32,       },
-    {   KEY_LVL8_INTRA_NUM,     TYPE_S32,       },
-    {   KEY_LVL4_INTRA_NUM,     TYPE_S32,       },
-    {   KEY_INPUT_PSKIP,        TYPE_S32,       },
-    {   KEY_OUTPUT_PSKIP,       TYPE_S32,       },
-    {   KEY_ENC_SSE,            TYPE_S64,       },
+    META_KEY_TO_U64(KEY_LVL64_INTER_NUM,    TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_LVL32_INTER_NUM,    TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_LVL16_INTER_NUM,    TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_LVL8_INTER_NUM,     TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_LVL32_INTRA_NUM,    TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_LVL16_INTRA_NUM,    TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_LVL8_INTRA_NUM,     TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_LVL4_INTRA_NUM,     TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_INPUT_PSKIP,        TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_OUTPUT_PSKIP,       TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_INPUT_PSKIP_NON_REF,    TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_ENC_SSE,            TYPE_VAL_64),
 
-    {   KEY_ENC_MARK_LTR,       TYPE_S32,       },
-    {   KEY_ENC_USE_LTR,        TYPE_S32,       },
-    {   KEY_ENC_FRAME_QP,       TYPE_S32,       },
-    {   KEY_ENC_BASE_LAYER_PID, TYPE_S32,       },
+    META_KEY_TO_U64(KEY_ENC_MARK_LTR,       TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_ENC_USE_LTR,        TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_ENC_FRAME_QP,       TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_ENC_BASE_LAYER_PID, TYPE_VAL_32),
 
-    {   KEY_DEC_TBN_EN,         TYPE_S32,       },
-    {   KEY_DEC_TBN_Y_OFFSET,   TYPE_S32,       },
-    {   KEY_DEC_TBN_UV_OFFSET,  TYPE_S32,       },
+    META_KEY_TO_U64(KEY_DEC_TBN_EN,         TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_DEC_TBN_Y_OFFSET,   TYPE_VAL_32),
+    META_KEY_TO_U64(KEY_DEC_TBN_UV_OFFSET,  TYPE_VAL_32),
 };
 
 class MppMetaService
@@ -100,6 +118,7 @@ private:
 
     spinlock_t          mLock;
     struct list_head    mlist_meta;
+    MppTrie             mTrie;
 
     RK_U32              meta_id;
     RK_S32              meta_count;
@@ -111,12 +130,6 @@ public:
         return &instance;
     }
 
-    /*
-     * get_index_of_key does two things:
-     * 1. Check the key / type pair is correct or not.
-     *    If failed on check return negative value
-     * 2. Compare all exsisting meta data defines to find the non-negative index
-     */
     RK_S32 get_index_of_key(MppMetaKey key, MppMetaType type);
 
     MppMetaImpl  *get_meta(const char *tag, const char *caller);
@@ -128,8 +141,16 @@ MppMetaService::MppMetaService()
       meta_count(0),
       finished(0)
 {
+    RK_U32 i;
+
     mpp_spinlock_init(&mLock);
     INIT_LIST_HEAD(&mlist_meta);
+
+    mpp_trie_init(&mTrie, "MppMetaDef");
+    for (i = 0; i < MPP_ARRAY_ELEMS(meta_defs); i++) {
+        mpp_trie_add_info(mTrie, (const char *)&meta_defs[i], NULL, 0);
+    }
+    mpp_trie_add_info(mTrie, NULL, NULL, 0);
 }
 
 MppMetaService::~MppMetaService()
@@ -144,21 +165,21 @@ MppMetaService::~MppMetaService()
         }
     }
 
+    if (mTrie) {
+        mpp_trie_deinit(mTrie);
+        mTrie = NULL;
+    }
+
     mpp_assert(meta_count == 0);
     finished = 1;
 }
 
 RK_S32 MppMetaService::get_index_of_key(MppMetaKey key, MppMetaType type)
 {
-    RK_S32 i = 0;
-    RK_S32 num = MPP_ARRAY_ELEMS(meta_defs);
+    RK_U64 val = META_KEY_TO_U64(key, type);
+    MppTrieInfo *info = mpp_trie_get_info(mTrie, (const char *)&val);
 
-    for (i = 0; i < num; i++) {
-        if ((meta_defs[i].key == key) && (meta_defs[i].type == type))
-            break;
-    }
-
-    return (i < num) ? (i) : (-1);
+    return info ? info->index : -1;
 }
 
 MppMetaImpl *MppMetaService::get_meta(const char *tag, const char *caller)
@@ -169,7 +190,7 @@ MppMetaImpl *MppMetaService::get_meta(const char *tag, const char *caller)
         const char *tag_src = (tag) ? (tag) : (MODULE_TAG);
         RK_U32 i;
 
-        strncpy(impl->tag, tag_src, sizeof(impl->tag));
+        strncpy(impl->tag, tag_src, sizeof(impl->tag) - 1);
         impl->caller = caller;
         impl->meta_id = MPP_FETCH_ADD(&meta_id, 1);
         INIT_LIST_HEAD(&impl->list_meta);
@@ -280,12 +301,10 @@ MPP_RET mpp_meta_dump(MppMeta meta)
         if (!impl->vals[i].state)
             continue;
 
-        const char *key = (const char *)&meta_defs[i].key;
-        const char *type = (const char *)&meta_defs[i].type;
+        const char *key = (const char *)&meta_defs[i];
 
-        mpp_log("key %c%c%c%c type %c%c%c%c\n",
-                key[3], key[2], key[1], key[0],
-                type[3], type[2], type[1], type[0]);
+        mpp_log("key %c%c%c%c - %c\n", key[0], key[1], key[2], key[3],
+                (meta_defs[i] >> 32) & 0xff);
     }
 
     return MPP_OK;
@@ -298,8 +317,7 @@ MPP_RET mpp_meta_dump(MppMeta meta)
             mpp_err_f("found NULL input\n"); \
             return MPP_ERR_NULL_PTR; \
         } \
-        MppMetaService *service = MppMetaService::get_inst(); \
-        RK_S32 index = service->get_index_of_key(key, key_type); \
+        RK_S32 index = MppMetaService::get_inst()->get_index_of_key(key, key_type); \
         if (index < 0) \
             return MPP_NOK; \
         MppMetaImpl *impl = (MppMetaImpl *)meta; \
@@ -316,8 +334,7 @@ MPP_RET mpp_meta_dump(MppMeta meta)
             mpp_err_f("found NULL input\n"); \
             return MPP_ERR_NULL_PTR; \
         } \
-        MppMetaService *service = MppMetaService::get_inst(); \
-        RK_S32 index = service->get_index_of_key(key, key_type); \
+        RK_S32 index = MppMetaService::get_inst()->get_index_of_key(key, key_type); \
         if (index < 0) \
             return MPP_NOK; \
         MppMetaImpl *impl = (MppMetaImpl *)meta; \
@@ -336,8 +353,7 @@ MPP_RET mpp_meta_dump(MppMeta meta)
             mpp_err_f("found NULL input\n"); \
             return MPP_ERR_NULL_PTR; \
         } \
-        MppMetaService *service = MppMetaService::get_inst(); \
-        RK_S32 index = service->get_index_of_key(key, key_type); \
+        RK_S32 index = MppMetaService::get_inst()->get_index_of_key(key, key_type); \
         if (index < 0) \
             return MPP_NOK; \
         MppMetaImpl *impl = (MppMetaImpl *)meta; \
@@ -353,9 +369,9 @@ MPP_RET mpp_meta_dump(MppMeta meta)
         return ret; \
     }
 
-MPP_META_ACCESSOR(s32, RK_S32, TYPE_S32, val_s32)
-MPP_META_ACCESSOR(s64, RK_S64, TYPE_S64, val_s64)
-MPP_META_ACCESSOR(ptr, void *, TYPE_PTR, val_ptr)
-MPP_META_ACCESSOR(frame, MppFrame, TYPE_FRAME, frame)
-MPP_META_ACCESSOR(packet, MppPacket, TYPE_PACKET, packet)
-MPP_META_ACCESSOR(buffer, MppBuffer, TYPE_BUFFER, buffer)
+MPP_META_ACCESSOR(s32, RK_S32, TYPE_VAL_32, val_s32)
+MPP_META_ACCESSOR(s64, RK_S64, TYPE_VAL_64, val_s64)
+MPP_META_ACCESSOR(ptr, void *, TYPE_UPTR, val_ptr)
+MPP_META_ACCESSOR(frame, MppFrame, TYPE_SPTR, frame)
+MPP_META_ACCESSOR(packet, MppPacket, TYPE_SPTR, packet)
+MPP_META_ACCESSOR(buffer, MppBuffer, TYPE_SPTR, buffer)

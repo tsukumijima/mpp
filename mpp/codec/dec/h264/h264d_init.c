@@ -1509,7 +1509,10 @@ static RK_U32 check_ref_dbp_err(H264_DecCtx_t *p_Dec, H264_RefPicInfo_t *pref, R
             }
             mpp_buf_slot_get_prop(p_Dec->frame_slots, slot_idx, SLOT_FRAME_PTR, &mframe);
             if (mframe) {
-                if (i < active_refs) {
+                if (i < active_refs
+                    && (!p_Dec->p_Vid->recovery.valid_flag
+                        || p_Dec->dpb_info[pref[i].dpb_idx].frame_num < p_Dec->p_Vid->recovery.first_frm_valid
+                        || p_Dec->dpb_info[pref[i].dpb_idx].frame_num >= p_Dec->p_Vid->recovery.recovery_pic_id)) {
                     dpb_error_flag |= mpp_frame_get_errinfo(mframe);
                 }
                 H264D_DBG(H264D_DBG_DPB_REF_ERR, "[DPB_REF_ERR] slot_idx=%d, dpb_err[%d]=%d", slot_idx, i, mpp_frame_get_errinfo(mframe));
@@ -2050,9 +2053,12 @@ MPP_RET init_picture(H264_SLICE_t *currSlice)
     H264dErrCtx_t *p_err   = &p_Dec->errctx;
 
     //!< discard stream before I_SLICE
-    p_err->i_slice_no += ((!currSlice->layer_id) && (H264_I_SLICE == currSlice->slice_type ||
-                                                     (p_Vid->recovery.valid_flag && p_Vid->recovery.first_frm_valid &&
-                                                      p_Vid->recovery.first_frm_id == currSlice->frame_num))) ? 1 : 0;
+    if (!p_err->i_slice_no && p_Vid->recovery.valid_flag && p_Vid->recovery.first_frm_valid &&
+        p_Vid->recovery.first_frm_id == currSlice->frame_num) {
+        p_err->i_slice_no += (!currSlice->layer_id) ? 1 : 0;
+    } else {
+        p_err->i_slice_no += ((!currSlice->layer_id) && (H264_I_SLICE == currSlice->slice_type)) ? 1 : 0;
+    }
 
     if (!p_err->i_slice_no) {
         H264D_WARNNING("[Discard] Discard slice before I Slice. \n");

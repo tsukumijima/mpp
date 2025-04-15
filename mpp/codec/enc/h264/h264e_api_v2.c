@@ -712,11 +712,13 @@ static MPP_RET h264e_start(void *ctx, HalEncTask *task)
         RK_S32 force_use_lt_idx = -1;
         RK_S32 force_frame_qp = -1;
         RK_S32 base_layer_pid = -1;
+        RK_S32 force_tid = -1;
 
         mpp_meta_get_s32(meta, KEY_ENC_MARK_LTR, &force_lt_idx);
         mpp_meta_get_s32(meta, KEY_ENC_USE_LTR, &force_use_lt_idx);
         mpp_meta_get_s32(meta, KEY_ENC_FRAME_QP, &force_frame_qp);
         mpp_meta_get_s32(meta, KEY_ENC_BASE_LAYER_PID, &base_layer_pid);
+        mpp_meta_get_s32(meta, KEY_TEMPORAL_ID, &force_tid);
 
         if (force_lt_idx >= 0) {
             frm_cfg->force_flag |= ENC_FORCE_LT_REF_IDX;
@@ -727,6 +729,11 @@ static MPP_RET h264e_start(void *ctx, HalEncTask *task)
             frm_cfg->force_flag |= ENC_FORCE_REF_MODE;
             frm_cfg->force_ref_mode = REF_TO_LT_REF_IDX;
             frm_cfg->force_ref_arg = force_use_lt_idx;
+        }
+
+        if (force_tid >= 0) {
+            frm_cfg->force_flag |= ENC_FORCE_TEMPORAL_ID;
+            frm_cfg->force_temporal_id = force_tid;
         }
 
         if (force_frame_qp >= 0) {
@@ -748,6 +755,41 @@ static MPP_RET h264e_start(void *ctx, HalEncTask *task)
     h264e_dbg_func("leave\n");
 
     return MPP_OK;
+}
+
+MPP_RET h264e_pskip_ref_check(H264eDpb *dpb, H264eFrmInfo *frms)
+{
+    H264eDpbFrm *curr = NULL;
+    H264eDpbFrm *refr = NULL;
+    RK_U32 i;
+    MPP_RET ret = MPP_OK;
+
+    curr = dpb->curr;
+    refr = dpb->refr;
+
+    if (curr->status.force_pskip_is_ref) {
+        H264eDpbFrm *temp_frm;
+        for (i = 0; i < H264E_MAX_REFS_CNT; i++) {
+            temp_frm = &dpb->frames[i];
+            if (temp_frm->slot_idx != frms->refr_idx) {
+                temp_frm->as_pskip_ref = 0;
+            } else {
+                temp_frm->as_pskip_ref = 1;
+            }
+        }
+    }
+
+    if (!refr->status.force_pskip_is_ref && !curr->status.force_pskip_is_ref) {
+        H264eDpbFrm *temp_frm;
+        for (i = 0; i < H264E_MAX_REFS_CNT; i++) {
+            temp_frm = &dpb->frames[i];
+            if (temp_frm) {
+                temp_frm->as_pskip_ref = 0;
+            }
+        }
+    }
+
+    return ret;
 }
 
 static MPP_RET h264e_proc_dpb(void *ctx, HalEncTask *task)
@@ -777,13 +819,16 @@ static MPP_RET h264e_proc_dpb(void *ctx, HalEncTask *task)
     frms->curr_idx = curr->slot_idx;
 
     if (refr) {
-        if (refr->status.force_pskip)
-            frms->refr_idx = p->pre_ref_idx;
+        if (refr->status.force_pskip_is_ref)
+            frms->refr_idx = refr->prev_ref_idx;
         else
             frms->refr_idx = refr->slot_idx;
     } else {
         frms->refr_idx = curr->slot_idx;
     }
+
+    // mark actual refs buf when force pskip is ref
+    h264e_pskip_ref_check(dpb, frms);
 
     for (i = 0; i < (RK_S32)MPP_ARRAY_ELEMS(frms->usage); i++)
         frms->usage[i] = dpb->frames[i].on_used;
@@ -897,8 +942,9 @@ static MPP_RET h264e_sw_enc(void *ctx, HalEncTask *task)
 
     rc_info->bit_real = task->length;
     rc_info->quality_real = rc_info->quality_target;
-    p->pre_ref_idx = p->frms.refr_idx;
+    p->dpb.curr->prev_ref_idx = p->frms.refr_idx;
     mpp_packet_add_segment_info(packet, H264_NALU_TYPE_SLICE, length, final_len);
+    mpp_buffer_sync_partial_end(mpp_packet_get_buffer(packet), length, final_len);
 
     return MPP_OK;
 }

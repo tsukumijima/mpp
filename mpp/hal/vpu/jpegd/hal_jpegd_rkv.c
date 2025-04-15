@@ -453,7 +453,8 @@ static MPP_RET jpegd_gen_regs(JpegdHalCtx *ctx, JpegdSyntax *syntax)
 
     y_virstride = y_hor_stride * out_height;
     if (regs->reg2_sys.dec_out_sequence == OUTPUT_TILE) {
-        if (mpp_get_soc_type() == ROCKCHIP_SOC_RK3576) {
+        // The new JPEG decoder supports tile 4x4 output by default.
+        if (mpp_get_soc_type() >= ROCKCHIP_SOC_RK3576) {
             switch (regs->reg2_sys.yuv_out_format) {
             case YUV_OUT_FMT_2_YUYV:
                 y_hor_stride = y_hor_stride * 4 * 2;
@@ -821,7 +822,8 @@ MPP_RET hal_jpegd_rkv_control(void *hal, MpiCmd cmd_type, void *param)
         }
 
         if (MPP_FRAME_FMT_IS_RGB(output_fmt)) {
-            if (soc_type == ROCKCHIP_SOC_RK3576) {
+            // The new JPEG decoder defaults to no RGB support.
+            if (soc_type >= ROCKCHIP_SOC_RK3576) {
                 ret = MPP_ERR_VALUE;
             } else if (soc_type >= ROCKCHIP_SOC_RK3588) {
                 // only rgb565be and rgb888 supported

@@ -310,15 +310,15 @@ typedef struct AV1RawTileList {
 } AV1RawTileList;
 
 typedef struct AV1RawMetadataHDRCLL {
-    RK_U8 max_cll;
-    RK_U8 max_fall;
+    RK_U16 max_cll;
+    RK_U16 max_fall;
 } AV1RawMetadataHDRCLL;
 
 typedef struct AV1RawMetadataHDRMDCV {
-    RK_U8 primary_chromaticity_x[3];
-    RK_U8 primary_chromaticity_y[3];
-    RK_U8 white_point_chromaticity_x;
-    RK_U8 white_point_chromaticity_y;
+    RK_U16 primary_chromaticity_x[3];
+    RK_U16 primary_chromaticity_y[3];
+    RK_U16 white_point_chromaticity_x;
+    RK_U16 white_point_chromaticity_y;
     RK_U32 luminance_max;
     RK_U32 luminance_min;
 } AV1RawMetadataHDRMDCV;

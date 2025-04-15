@@ -214,6 +214,14 @@ typedef enum {
  */
 #define MPP_FRAME_FBC_AFBC_V2       (0x00200000)
 
+/*
+* RKFBC is for video decoder output and video encoder Input.
+* It has default header stride to be calculated * from width and height:
+* Header stride = MPP_ALIGN(width, 64) / 64 * 16
+* Payload offset is always set to zero.
+*/
+#define MPP_FRAME_FBC_RKFBC         (0x00400000)
+
 #define MPP_FRAME_FMT_LE_MASK       (0x01000000)
 
 #define MPP_FRAME_FMT_IS_YUV(fmt)   (((fmt & MPP_FRAME_FMT_COLOR_MASK) == MPP_FRAME_FMT_YUV) && \
@@ -228,6 +236,7 @@ typedef enum {
  * For MPP_FRAME_FBC_AFBC_V1 the 16byte aligned stride is used.
  */
 #define MPP_FRAME_FMT_IS_FBC(fmt)   (fmt & MPP_FRAME_FBC_MASK)
+#define MPP_FRAME_FMT_IS_RKFBC(fmt) (fmt & MPP_FRAME_FBC_RKFBC)
 
 #define MPP_FRAME_FMT_IS_HDR(fmt)   (fmt & MPP_FRAME_HDR_MASK)
 
@@ -240,7 +249,7 @@ typedef enum {
 typedef enum {
     MPP_FMT_YUV420SP        = (MPP_FRAME_FMT_YUV + 0),  /* YYYY... UV... (NV12)     */
     /*
-     * A rockchip specific pixel format, without gap between pixel aganist
+     * A rockchip specific pixel format, without gap between pixel against
      * the P010_10LE/P010_10BE
      */
     MPP_FMT_YUV420SP_10BIT  = (MPP_FRAME_FMT_YUV + 1),
@@ -260,6 +269,8 @@ typedef enum {
     MPP_FMT_YUV444SP        = (MPP_FRAME_FMT_YUV + 15), /* YYYY... UVUVUVUV...      */
     MPP_FMT_YUV444P         = (MPP_FRAME_FMT_YUV + 16), /* YYYY... UUUU... VVVV...  */
     MPP_FMT_YUV444SP_10BIT  = (MPP_FRAME_FMT_YUV + 17),
+    MPP_FMT_AYUV2BPP        = (MPP_FRAME_FMT_YUV + 18), /* YYYY... UVUVUVUV...      */
+    MPP_FMT_AYUV1BPP        = (MPP_FRAME_FMT_YUV + 19),
     MPP_FMT_YUV_BUTT,
 
     MPP_FMT_RGB565          = (MPP_FRAME_FMT_RGB + 0),  /* 16-bit RGB               */
@@ -276,6 +287,8 @@ typedef enum {
     MPP_FMT_ABGR8888        = (MPP_FRAME_FMT_RGB + 11), /* 32-bit RGB               */
     MPP_FMT_BGRA8888        = (MPP_FRAME_FMT_RGB + 12), /* 32-bit RGB               */
     MPP_FMT_RGBA8888        = (MPP_FRAME_FMT_RGB + 13), /* 32-bit RGB               */
+    MPP_FMT_ARGB4444        = (MPP_FRAME_FMT_RGB + 14), /* 16-bit RGB               */
+    MPP_FMT_ARGB1555        = (MPP_FRAME_FMT_RGB + 15), /* 2-bit RGB                */
     MPP_FMT_RGB_BUTT,
 
     MPP_FMT_BUTT,

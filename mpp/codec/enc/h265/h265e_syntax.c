@@ -154,7 +154,7 @@ static void fill_slice_parameters( const H265eCtx *h,
     sp->ref_pic_lst_mdf_l0  = slice->ref_pic_list_modification_flag_l0;
 
     sp->num_refidx_l1_act   = 0;
-    sp->num_refidx_l0_act   = 1;
+    sp->num_refidx_l0_act   = 0;
 
     sp->num_refidx_act_ovrd = (((RK_U32)slice->m_numRefIdx[0] != slice->m_pps->m_numRefIdxL0DefaultActive)
                                || (slice->m_sliceType == B_SLICE &&
@@ -192,7 +192,6 @@ RK_S32 fill_ref_parameters(const H265eCtx *h, H265eSlicParams *sp)
 {
     H265eSlice  *slice = h->slice;
     H265eReferencePictureSet* rps = slice->m_rps;
-    H265eSyntax_new *syn = (H265eSyntax_new*)&h->syntax;
     RK_U32 numRpsCurrTempList = 0;
     RK_S32 ref_num = 0;
     H265eDpbFrm *ref_frame;
@@ -342,13 +341,13 @@ RK_S32 fill_ref_parameters(const H265eCtx *h, H265eSlicParams *sp)
     ref_frame = slice->m_refPicList[0][0];
 
     if (ref_frame) {
-        if (ref_frame->status.force_pskip)
-            ref_frame->slot_idx = syn->pre_ref_idx;
-        sp->ref_pic.slot_idx = ref_frame->slot_idx;
+        if (ref_frame->status.force_pskip_is_ref)
+            sp->ref_pic.slot_idx =  slice->m_refPicList[0][0]->prev_ref_idx;
+        else
+            sp->ref_pic.slot_idx = ref_frame->slot_idx;
     } else {
         sp->ref_pic.slot_idx = h->dpb->curr->slot_idx;
     }
-
     return  0;
 }
 

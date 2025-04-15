@@ -178,6 +178,9 @@ MPP_RET mpp_packet_deinit(MppPacket *packet)
 
     MPP_FREE(p->segments_ext);
 
+    if (p->release)
+        p->release(p->release_ctx, p->release_arg);
+
     mpp_mem_pool_put(mpp_packet_pool, *packet);
     *packet = NULL;
     return MPP_OK;
@@ -352,7 +355,7 @@ RK_U32 mpp_packet_is_partition(const MppPacket packet)
 
     MppPacketImpl *p = (MppPacketImpl *)packet;
 
-    return p->status.partition;
+    return (p->status.partition) || (p->flag & MPP_PACKET_FLAG_PARTITION);
 }
 
 RK_U32 mpp_packet_is_soi(const MppPacket packet)
@@ -372,7 +375,7 @@ RK_U32 mpp_packet_is_eoi(const MppPacket packet)
 
     MppPacketImpl *p = (MppPacketImpl *)packet;
 
-    return p->status.eoi;
+    return (p->status.eoi) || (p->flag & MPP_PACKET_FLAG_EOI);
 }
 
 MPP_RET mpp_packet_read(MppPacket packet, size_t offset, void *data, size_t size)
@@ -600,6 +603,18 @@ const MppPktSeg *mpp_packet_get_segment_info(const MppPacket packet)
         return NULL;
 
     return (const MppPktSeg *)p->segments;
+}
+
+void mpp_packet_set_release(MppPacket packet, ReleaseCb release, void *ctx, void *arg)
+{
+    if (check_is_mpp_packet(packet))
+        return;
+
+    MppPacketImpl *p = (MppPacketImpl *)packet;
+
+    p->release = release;
+    p->release_ctx = ctx;
+    p->release_arg = arg;
 }
 
 /*
