@@ -297,7 +297,7 @@ static int av1d_fill_picparams(Av1CodecContext *ctx, DXVA_PicParams_AV1 *pp)
     pp->tile_cols_log2 = frame_header->tile_cols_log2;
     pp->tile_rows_log2 = frame_header->tile_rows_log2;
     // XXX: Setting the StatusReportFeedbackNumber breaks decoding on some drivers (tested on NVIDIA 457.09)
-    // Status Reporting is not used by FFmpeg, hence not providing a number does not cause any issues
+    // Status Reporting is not used by FF, hence not providing a number does not cause any issues
     //pp->StatusReportFeedbackNumber = 1 + DXVA_CONTEXT_REPORT_ID(avctx, ctx)++;
     return 0;
 }

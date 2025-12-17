@@ -21,7 +21,7 @@
 #include "jpege_syntax.h"
 #include "hal_bufs.h"
 #include "rkv_enc_def.h"
-#include "vepu541_common.h"
+#include "vepu5xx_common.h"
 #include "vepu511_common.h"
 #include "hal_jpege_vepu511.h"
 #include "hal_jpege_vepu511_reg.h"
@@ -58,6 +58,7 @@ typedef struct JpegeV511HalContext_t {
 
     JpegeBits           bits;
     JpegeSyntax         syntax;
+    HalJpegeRc          hal_rc;
 } JpegeV511HalContext;
 
 MPP_RET hal_jpege_vepu511_init(void *hal, MppEncHalCfg *cfg)
@@ -84,6 +85,7 @@ MPP_RET hal_jpege_vepu511_init(void *hal, MppEncHalCfg *cfg)
     ctx->dev = cfg->dev;
     jpege_bits_init(&ctx->bits);
     mpp_assert(ctx->bits);
+    hal_jpege_rc_init(&ctx->hal_rc);
 
     hal_jpege_leave();
     return ret;
@@ -114,7 +116,7 @@ static MPP_RET hal_jpege_vepu511_prepare(void *hal)
 
     hal_jpege_dbg_func("enter %p\n", hal);
     VepuFmtCfg *fmt = (VepuFmtCfg *)ctx->input_fmt;
-    vepu541_set_fmt(fmt, ctx->cfg->prep.format);
+    vepu5xx_set_fmt(fmt, ctx->cfg->prep.format);
 
     hal_jpege_dbg_func("leave %p\n", hal);
 
@@ -122,7 +124,7 @@ static MPP_RET hal_jpege_vepu511_prepare(void *hal)
 }
 
 static MPP_RET vepu511_jpeg_set_patch_info(MppDev dev, JpegeSyntax *syn,
-                                           Vepu541Fmt input_fmt,
+                                           VepuFmt input_fmt,
                                            HalEncTask *task)
 {
     RK_U32 hor_stride = syn->hor_stride;
@@ -136,36 +138,36 @@ static MPP_RET vepu511_jpeg_set_patch_info(MppDev dev, JpegeSyntax *syn,
         v_offset = u_offset;
     } else {
         switch (input_fmt) {
-        case VEPU541_FMT_YUV420P: {
+        case VEPU5xx_FMT_YUV420P: {
             u_offset = frame_size;
             v_offset = frame_size * 5 / 4;
         } break;
-        case VEPU541_FMT_YUV420SP:
-        case VEPU541_FMT_YUV422SP: {
+        case VEPU5xx_FMT_YUV420SP:
+        case VEPU5xx_FMT_YUV422SP: {
             u_offset = frame_size;
             v_offset = frame_size;
         } break;
-        case VEPU541_FMT_YUV422P: {
+        case VEPU5xx_FMT_YUV422P: {
             u_offset = frame_size;
             v_offset = frame_size * 3 / 2;
         } break;
-        case VEPU540_FMT_YUV400 :
-        case VEPU541_FMT_YUYV422:
-        case VEPU541_FMT_UYVY422: {
+        case VEPU5xx_FMT_YUV400 :
+        case VEPU5xx_FMT_YUYV422:
+        case VEPU5xx_FMT_UYVY422: {
             u_offset = 0;
             v_offset = 0;
         } break;
-        case VEPU580_FMT_YUV444SP : {
+        case VEPU5xx_FMT_YUV444SP : {
             u_offset = frame_size;
             v_offset = frame_size;
         } break;
-        case VEPU580_FMT_YUV444P : {
+        case VEPU5xx_FMT_YUV444P : {
             u_offset = frame_size;
             v_offset = frame_size * 2;
         } break;
-        case VEPU541_FMT_BGR565:
-        case VEPU541_FMT_BGR888:
-        case VEPU541_FMT_BGRA8888: {
+        case VEPU5xx_FMT_BGR565:
+        case VEPU5xx_FMT_BGR888:
+        case VEPU5xx_FMT_BGRA8888: {
             u_offset = 0;
             v_offset = 0;
         } break;
@@ -205,7 +207,7 @@ MPP_RET vepu511_set_jpeg_reg(Vepu511JpegCfg *cfg)
     regs->adr_src1 = regs->adr_src0;
     regs->adr_src2 = regs->adr_src0;
 
-    vepu511_jpeg_set_patch_info(cfg->dev, syn, (Vepu541Fmt) fmt->format, task);
+    vepu511_jpeg_set_patch_info(cfg->dev, syn, (VepuFmt)fmt->format, task);
 
     regs->adr_bsbt = mpp_buffer_get_fd(task->output);
     regs->adr_bsbb = regs->adr_bsbt;
@@ -240,27 +242,27 @@ MPP_RET vepu511_set_jpeg_reg(Vepu511JpegCfg *cfg)
     } else if (syn->hor_stride) {
         stridey = syn->hor_stride;
     } else {
-        if (regs->src_fmt.src_cfmt == VEPU541_FMT_BGRA8888 )
+        if (regs->src_fmt.src_cfmt == VEPU5xx_FMT_BGRA8888)
             stridey = syn->width * 4;
-        else if (regs->src_fmt.src_cfmt == VEPU541_FMT_BGR888 ||
-                 regs->src_fmt.src_cfmt == VEPU580_FMT_YUV444P ||
-                 regs->src_fmt.src_cfmt == VEPU580_FMT_YUV444SP)
+        else if (regs->src_fmt.src_cfmt == VEPU5xx_FMT_BGR888 ||
+                 regs->src_fmt.src_cfmt == VEPU5xx_FMT_YUV444P ||
+                 regs->src_fmt.src_cfmt == VEPU5xx_FMT_YUV444SP)
             stridey = syn->width * 3;
-        else if (regs->src_fmt.src_cfmt == VEPU541_FMT_BGR565 ||
-                 regs->src_fmt.src_cfmt == VEPU541_FMT_YUYV422 ||
-                 regs->src_fmt.src_cfmt == VEPU541_FMT_UYVY422)
+        else if (regs->src_fmt.src_cfmt == VEPU5xx_FMT_BGR565 ||
+                 regs->src_fmt.src_cfmt == VEPU5xx_FMT_YUYV422 ||
+                 regs->src_fmt.src_cfmt == VEPU5xx_FMT_UYVY422)
             stridey = syn->width * 2;
     }
 
-    stridec = (regs->src_fmt.src_cfmt == VEPU541_FMT_YUV422SP ||
-               regs->src_fmt.src_cfmt == VEPU541_FMT_YUV420SP ||
-               regs->src_fmt.src_cfmt == VEPU580_FMT_YUV444P) ?
+    stridec = (regs->src_fmt.src_cfmt == VEPU5xx_FMT_YUV422SP ||
+               regs->src_fmt.src_cfmt == VEPU5xx_FMT_YUV420SP ||
+               regs->src_fmt.src_cfmt == VEPU5xx_FMT_YUV444P) ?
               stridey : stridey / 2;
 
-    if (regs->src_fmt.src_cfmt == VEPU580_FMT_YUV444SP)
+    if (regs->src_fmt.src_cfmt == VEPU5xx_FMT_YUV444SP)
         stridec = stridey * 2;
 
-    if (regs->src_fmt.src_cfmt < VEPU541_FMT_NONE) {
+    if (regs->src_fmt.src_cfmt < VEPU5xx_FMT_ARGB1555) {
         regs->src_udfy.csc_wgt_r2y = 66;
         regs->src_udfy.csc_wgt_g2y = 129;
         regs->src_udfy.csc_wgt_b2y = 25;
@@ -299,71 +301,55 @@ MPP_RET vepu511_set_jpeg_reg(Vepu511JpegCfg *cfg)
     return MPP_OK;
 }
 
-static MPP_RET hal_jpege_vepu510_set_roi(void *roi_reg_base, MppEncROICfg * roi,
-                                         RK_S32 w, RK_S32 h)
+static void hal_jpege_vepu511_set_roi(JpegeV511HalContext *ctx)
 {
-    MppEncROIRegion *region = roi->regions;
-    Vepu511JpegReg *roi_reg = (Vepu511JpegReg *)roi_reg_base;
-    Vepu511JpegRoiRegion *reg_regions = &roi_reg->roi_regions[0];
+    MppJpegROICfg *roi_cfg = (MppJpegROICfg *)ctx->roi_data;
+    JpegV511RegSet *regs = ctx->regs;
+    Vepu511JpegRoiRegion *reg_regions = &regs->reg_base.jpegReg.roi_regions[0];
+    MppJpegROIRegion *region;
+    RK_U32 frame_width = ctx->cfg->prep.width;
+    RK_U32 frame_height = ctx->cfg->prep.height;
     RK_S32 i;
-    MPP_RET ret = MPP_NOK;
 
-    if (NULL == reg_regions) {
-        mpp_err_f("invalid reg_regions %p\n", reg_regions);
-        goto DONE;
-    }
+    if (roi_cfg == NULL)
+        return;
 
-    memset(reg_regions, 0, sizeof(Vepu511RoiRegion) * 8);
-
-    if (NULL == roi) {
-        mpp_err_f("invalid buf %p roi %p\n", roi);
-        goto DONE;
-    }
-
-    if (roi->number > MPP_MAX_JPEG_ROI_NUM) {
-        mpp_err_f("invalid region number %d\n", roi->number);
-        goto DONE;
-    }
-    mpp_log_f("set roi vepu511: roi->number %d\n", roi->number);
-
-    /* check region config */
-    ret = MPP_OK;
-    for (i = 0; i < (RK_S32) roi->number; i++, region++) {
-        if (region->x + region->w > w || region->y + region->h > h)
-            ret = MPP_NOK;
-
-        if (region->intra > 1
-            || region->qp_area_idx >= MPP_MAX_JPEG_ROI_NUM
-            || region->area_map_en > 1 || region->abs_qp_en > 1)
-            ret = MPP_NOK;
-
-        if ((region->abs_qp_en && region->quality > 51) ||
-            (!region->abs_qp_en
-             && (region->quality > 51 || region->quality < -51)))
-            ret = MPP_NOK;
-
-        if (ret) {
-            mpp_err_f("region %d invalid param:\n", i);
-            mpp_err_f("position [%d:%d:%d:%d] vs [%d:%d]\n",
-                      region->x, region->y, region->w, region->h, w,
-                      h);
-            mpp_err_f("force intra %d qp area index %d\n",
-                      region->intra, region->qp_area_idx);
-            mpp_err_f("abs qp mode %d value %d\n",
-                      region->abs_qp_en, region->quality);
-            goto DONE;
+    if (roi_cfg->non_roi_en) {
+        if (roi_cfg->non_roi_level <= MPP_MAX_JPEG_ROI_LEVEL) {
+            reg_regions->roi_cfg1.frm_rdoq_en = 1;
+            reg_regions->roi_cfg1.frm_rdoq_level = roi_cfg->non_roi_level;
+        } else {
+            mpp_err_f("none roi level[%d] is invalid\n", roi_cfg->non_roi_level);
         }
+    }
+
+    for (i = 0; i < MPP_MAX_JPEG_ROI_NUM; i++) {
+        region = &roi_cfg->regions[i];
+        if (!region->roi_en)
+            continue;
+
+        if (region->w == 0 || region->h == 0 ||
+            region->x + region->w > frame_width ||
+            region->y + region->h > frame_height) {
+            mpp_err_f("region[%d]: x[%d] y[%d] w[%d] h[%d] is invalid, frame width[%d] height[%d]\n",
+                      i, region->x, region->y, region->w,
+                      region->h, frame_width, frame_height);
+            continue;
+        }
+
+        if (region->level > MPP_MAX_JPEG_ROI_LEVEL) {
+            mpp_err_f("region[%d]: roi level[%d] is invalid\n", i, region->level);
+            continue;
+        }
+
         reg_regions->roi_cfg0.roi0_rdoq_en = 1;
-        reg_regions->roi_cfg0.roi0_rdoq_level = region->quality;
         reg_regions->roi_cfg0.roi0_rdoq_start_x = MPP_ALIGN(region->x, 16) >> 3;
         reg_regions->roi_cfg0.roi0_rdoq_start_y = MPP_ALIGN(region->y, 16) >> 3;
+        reg_regions->roi_cfg0.roi0_rdoq_level = region->level;
         reg_regions->roi_cfg1.roi0_rdoq_width_m1 = (MPP_ALIGN(region->w, 16) >> 3) - 1;
         reg_regions->roi_cfg1.roi0_rdoq_height_m1 = (MPP_ALIGN(region->h, 16) >> 3) - 1;
-
         reg_regions++;
     }
-DONE:
-    return ret;
 }
 
 MPP_RET hal_jpege_vepu511_gen_regs(void *hal, HalEncTask *task)
@@ -373,7 +359,6 @@ MPP_RET hal_jpege_vepu511_gen_regs(void *hal, HalEncTask *task)
     Vepu511ControlCfg *reg_ctl = &regs->reg_ctl;
     JpegVepu511Base *reg_base = &regs->reg_base;
     JpegeBits bits = ctx->bits;
-    const RK_U8 *qtable[2] = {NULL};
     size_t length = mpp_packet_get_length(task->packet);
     RK_U8  *buf = mpp_buffer_get_ptr(task->output);
     size_t size = mpp_buffer_get_size(task->output);
@@ -390,12 +375,17 @@ MPP_RET hal_jpege_vepu511_gen_regs(void *hal, HalEncTask *task)
 
     memset(regs, 0, sizeof(JpegV511RegSet));
 
+    if (syntax->q_mode == JPEG_QFACTOR) {
+        syntax->q_factor = 100 - task->rc_task->info.quality_target;
+        hal_jpege_rc_update(&ctx->hal_rc, syntax);
+    }
+
     /* write header to output buffer */
     jpege_bits_setup(bits, buf, (RK_U32)size);
     /* seek length bytes data */
     jpege_seek_bits(bits, length << 3);
     /* NOTE: write header will update qtable */
-    write_jpeg_header(bits, syntax, qtable);
+    write_jpeg_header(bits, syntax, &ctx->hal_rc);
 
     bitpos = jpege_bits_get_bitpos(bits);
     task->length = (bitpos + 7) >> 3;
@@ -439,12 +429,7 @@ MPP_RET hal_jpege_vepu511_gen_regs(void *hal, HalEncTask *task)
     reg_base->common.enc_pic.jpeg_slen_fifo = 0;
 
     vepu511_set_jpeg_reg(&cfg);
-
-    if (ctx->roi_data) {
-        mpp_log_f("set roi data2\n");
-        hal_jpege_vepu510_set_roi(&regs->reg_base.jpegReg, ctx->roi_data,
-                                  ctx->cfg->prep.width, ctx->cfg->prep.height);
-    }
+    hal_jpege_vepu511_set_roi(ctx);
 
     if (ctx->osd_cfg.osd_data3 || ctx->osd_cfg.osd_data)
         vepu511_set_osd(&ctx->osd_cfg, &regs->reg_osd.osd_jpeg_cfg);
@@ -455,19 +440,19 @@ MPP_RET hal_jpege_vepu511_gen_regs(void *hal, HalEncTask *task)
 
         for ( i = 0; i < 8; i++) {
             for ( j = 0; j < 8; j++) {
-                tbl[i * 8 + j] = 0x8000 / qtable[0][j * 8 + i];
+                tbl[i * 8 + j] = 0x8000 / ctx->hal_rc.qtables[0][j * 8 + i];
             }
         }
         tbl += 64;
         for ( i = 0; i < 8; i++) {
             for ( j = 0; j < 8; j++) {
-                tbl[i * 8 + j] = 0x8000 / qtable[1][j * 8 + i];
+                tbl[i * 8 + j] = 0x8000 / ctx->hal_rc.qtables[1][j * 8 + i];
             }
         }
         tbl += 64;
         for ( i = 0; i < 8; i++) {
             for ( j = 0; j < 8; j++) {
-                tbl[i * 8 + j] = 0x8000 / qtable[1][j * 8 + i];
+                tbl[i * 8 + j] = 0x8000 / ctx->hal_rc.qtables[1][j * 8 + i];
             }
         }
     }
@@ -637,10 +622,17 @@ MPP_RET hal_jpege_vepu511_get_task(void *hal, HalEncTask *task)
     if (!frm_status->reencode && mpp_frame_has_meta(task->frame)) {
         MppMeta meta = mpp_frame_get_meta(frame);
 
-        mpp_meta_get_ptr(meta, KEY_ROI_DATA, (void **)&ctx->roi_data);
+        mpp_meta_get_ptr(meta, KEY_JPEG_ROI_DATA, (void **)&ctx->roi_data);
         mpp_meta_get_ptr(meta, KEY_OSD_DATA3, (void **)&ctx->osd_cfg.osd_data3);
 
     }
+
+    if (ctx->cfg->jpeg.update) {
+        hal_jpege_rc_update(&ctx->hal_rc, syntax);
+        ctx->cfg->jpeg.update = 0;
+    }
+
+    task->rc_task->frm.is_intra = 1;
 
     hal_jpege_leave();
     return MPP_OK;

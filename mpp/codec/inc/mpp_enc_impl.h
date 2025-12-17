@@ -22,6 +22,7 @@
 #include "mpp_enc_ref.h"
 #include "mpp_enc_refs.h"
 #include "mpp_device.h"
+#include "mpp_task_impl.h"
 
 #include "rc.h"
 #include "hal_info.h"
@@ -100,7 +101,7 @@ typedef struct MppEncImpl_t {
     MppBuffer           md_info;
 
     // internal status and protection
-    Mutex               lock;
+    MppMutex            lock;
     RK_U32              reset_flag;
     sem_t               enc_reset;
 
@@ -143,9 +144,15 @@ typedef struct MppEncImpl_t {
     RK_U32              support_hw_deflicker;
     EncRcTaskInfo       rc_info_prev;
 
-    /* Encoder configure set */
-    MppEncCfgSet        cfg;
+    /* encoder config object for external setup */
+    MppEncCfg           set_obj;
+    MppEncCfgSet        *set;
+    /* encoder config object for internal usage */
+    MppEncCfg           cfg_obj;
+    MppEncCfgSet        *cfg;
 } MppEncImpl;
+
+extern RK_U8 uuid_refresh_cfg[16];
 
 #ifdef __cplusplus
 extern "C" {

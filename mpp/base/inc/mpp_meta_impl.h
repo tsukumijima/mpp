@@ -21,6 +21,7 @@
 
 #include "mpp_list.h"
 #include "mpp_meta.h"
+#include "rk_venc_cmd.h"
 
 typedef struct MppMetaVal_t {
     RK_U32              state;
@@ -43,6 +44,9 @@ typedef struct MppMetaImpl_t {
 
     struct list_head    list_meta;
     RK_S32              node_count;
+    MppEncUserData      user_data;
+    MppEncUserDataSet   user_data_set;
+    RK_U32              datas_buf_size;
     MppMetaVal          vals[];
 } MppMetaImpl;
 
@@ -53,6 +57,11 @@ extern "C" {
 RK_S32 mpp_meta_size(MppMeta meta);
 MPP_RET mpp_meta_dump(MppMeta meta);
 MPP_RET mpp_meta_inc_ref(MppMeta meta);
+
+RK_S32 mpp_meta_s32_read(MppMeta meta, RK_S32 index, RK_S32 *val);
+
+extern RK_S32 meta_hdr_offset_index;
+extern RK_S32 meta_hdr_size_index;
 
 #ifdef __cplusplus
 }

@@ -66,10 +66,10 @@ struct Kmpp_t {
 
     MppBufferGroup      mPacketGroup;
     MppPacket           mPacket;
+    KmppFrame           mKframe;
 
     KmppOps             *mApi;
     KmppObj             mVencInitKcfg;
-    MppMemPool          mVencPacketPool;
 };
 
 #ifdef __cplusplus

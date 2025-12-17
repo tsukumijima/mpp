@@ -9,6 +9,7 @@
 #include "mpp_common.h"
 
 #include "kmpp_obj.h"
+#include "kmpp_buffer.h"
 
 #define TEST_DETAIL     1
 #define TEST_DEF_DUMP   2
@@ -33,9 +34,9 @@ static rk_s32 kmpp_obj_std_test(const char *name, rk_u32 flag)
     KmppObj obj = NULL;
     MPP_RET ret = MPP_NOK;
 
-    ret = kmpp_objdef_get(&def, name);
+    ret = kmpp_objdef_find(&def, name);
     if (ret) {
-        mpp_log("kmpp_objdef_get %s failed\n", name);
+        mpp_log("kmpp_objdef_find %s failed\n", name);
         goto done;
     }
 
@@ -56,22 +57,13 @@ static rk_s32 kmpp_obj_std_test(const char *name, rk_u32 flag)
     ret = kmpp_obj_put_f(obj);
     if (ret) {
         mpp_log("kmpp_obj_put %s failed\n", name);
-        goto done;
     }
     obj = NULL;
-
-    ret = kmpp_objdef_put(def);
-    if (ret) {
-        mpp_log("kmpp_objdef_put %s failed\n", name);
-        goto done;
-    }
     def = NULL;
 
 done:
     if (obj)
         kmpp_obj_put_f(obj);
-    if (def)
-        kmpp_objdef_put(def);
 
     return ret;
 }
@@ -126,9 +118,10 @@ static rk_s32 kmpp_buffer_test(const char *name, rk_u32 flag)
     test_detail("object %s ready\n", kmpp_obj_get_name(grp));
 
     /* get KmppBufGrpCfg from KmppBufGrp to config */
-    ret = kmpp_obj_get_shm_obj(grp, "cfg", &grp_cfg);
-    if (ret) {
-        mpp_log("buf grp get cfg failed ret %d\n", ret);
+    grp_cfg = kmpp_buf_grp_to_cfg(grp);
+    if (!grp_cfg) {
+        mpp_log("buf grp to cfg failed ret %d\n", ret);
+        ret = MPP_NOK;
         goto done;
     }
 
@@ -188,7 +181,7 @@ static rk_s32 kmpp_buffer_test(const char *name, rk_u32 flag)
     test_detail("object %s write parameters ready\n", kmpp_obj_get_name(grp_cfg));
 
     /* enable KmppBufGrpCfg by ioctl */
-    ret = kmpp_obj_ioctl_f(grp, 0, grp, NULL);
+    ret = kmpp_buf_grp_setup(grp);
 
     test_detail("object %s ioctl ret %d\n", kmpp_obj_get_name(grp), ret);
 
@@ -202,11 +195,10 @@ static rk_s32 kmpp_buffer_test(const char *name, rk_u32 flag)
     test_detail("object %s ready\n", kmpp_obj_get_name(buf));
 
     /* get KmppBufGrpCfg to setup */
-    sptr.uaddr = 0;
-    sptr.kaddr = 0;
-    ret = kmpp_obj_get_shm_obj(buf, "cfg", &buf_cfg);
-    if (ret) {
-        mpp_log("buf get cfg failed ret %d\n", ret);
+    buf_cfg = kmpp_buffer_to_cfg(buf);
+    if (!buf_cfg) {
+        mpp_log("buf to cfg failed ret %d\n", ret);
+        ret = MPP_NOK;
         goto done;
     }
 
@@ -224,7 +216,7 @@ static rk_s32 kmpp_buffer_test(const char *name, rk_u32 flag)
     }
 
     /* enable KmppBufferCfg by ioctl */
-    ret = kmpp_obj_ioctl_f(buf, 0, buf, NULL);
+    ret = kmpp_buffer_setup(buf);
 
     test_detail("object %s ioctl ret %d\n", kmpp_obj_get_name(buf), ret);
 
@@ -238,6 +230,71 @@ done:
 
     if (buf)
         kmpp_obj_put_f(buf);
+
+    return ret;
+}
+
+static rk_s32 kmpp_shm_test(const char *name, rk_u32 flag)
+{
+    rk_u32 sizes[] = {512, SZ_4K, SZ_16K, SZ_128K, SZ_256K, SZ_1M, SZ_4M, SZ_16M};
+    rk_u32 count = sizeof(sizes) / sizeof(sizes[0]);
+    KmppShm shm[count];
+    void *ptr;
+    rk_s32 ret = rk_ok;
+    rk_s32 i;
+    (void)name;
+    (void)flag;
+
+    memset(shm, 0, sizeof(shm));
+
+    for (i = 0; i < (RK_S32)MPP_ARRAY_ELEMS(sizes); i++) {
+        kmpp_shm_get_f(&shm[i], sizes[i]);
+        if (!shm[i]) {
+            mpp_log_f("shm get size %d failed\n", sizes[i]);
+            ret = rk_nok;
+            break;
+        }
+
+        test_detail("shm get size %d addr %p\n", sizes[i], kmpp_shm_to_entry_f(shm[i]));
+    }
+
+    for (i = 0; i < (RK_S32)MPP_ARRAY_ELEMS(sizes); i++) {
+        if (!shm[i])
+            continue;
+
+        if (kmpp_shm_put_f(shm[i])) {
+            mpp_log_f("shm put size %d failed\n", sizes[i]);
+            ret = rk_nok;
+            break;
+        }
+        shm[i] = NULL;
+    }
+
+    if (ret)
+        return ret;
+
+    for (i = (RK_S32)MPP_ARRAY_ELEMS(sizes) - 1; i >= 0; i--) {
+        kmpp_shm_get_f(&shm[i], sizes[i]);
+        if (!shm[i]) {
+            mpp_log_f("shm get size %d failed\n", sizes[i]);
+            ret = rk_nok;
+        }
+
+        if (ret)
+            break;
+
+        ptr = kmpp_shm_to_entry_f(shm[i]);
+
+        test_detail("shm get size %d addr %p\n", sizes[i], ptr);
+
+        if (ptr)
+            memset(ptr, 0, sizes[i]);
+
+        if (kmpp_shm_put_f(shm[i])) {
+            mpp_log_f("shm put size %d failed\n", sizes[i]);
+            ret = rk_nok;
+        }
+    }
 
     return ret;
 }
@@ -257,6 +314,11 @@ static KmppObjTest obj_tests[] = {
         "KmppBuffer",
         0,
         kmpp_buffer_test,
+    },
+    {
+        "kmpp_shm_test",
+        0,
+        kmpp_shm_test,
     },
 };
 

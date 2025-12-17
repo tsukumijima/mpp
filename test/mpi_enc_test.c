@@ -1,17 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 OR MIT */
 /*
- * Copyright 2015 Rockchip Electronics Co. LTD
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (c) 2015 Rockchip Electronics Co., Ltd.
  */
 
 #if defined(_WIN32)
@@ -37,6 +26,8 @@
 #include "camera_source.h"
 #include "mpp_enc_roi_utils.h"
 #include "mpp_rc_api.h"
+#include "osd3_test.h"
+#include "kmpp_obj.h"
 
 static RK_S32 qbias_arr_hevc[18] = {
     3, 6, 13, 171, 171, 171, 171,
@@ -75,6 +66,8 @@ typedef struct {
     RK_U32 frm_pkt_cnt;
     RK_S32 frame_num;
     RK_S32 frame_count;
+    RK_S32 frm_step;
+
     RK_U64 stream_size;
     /* end of encoding flag when set quit the loop */
     volatile RK_U32 loop_end;
@@ -88,13 +81,13 @@ typedef struct {
     MppEncCfg       cfg;
     MppEncPrepCfg   prep_cfg;
     MppEncRcCfg     rc_cfg;
-    MppEncCodecCfg  codec_cfg;
     MppEncSliceSplit split_cfg;
     MppEncOSDPltCfg osd_plt_cfg;
     MppEncOSDPlt    osd_plt;
     MppEncOSDData   osd_data;
     RoiRegionCfg    roi_region;
     MppEncROICfg    roi_cfg;
+    MppJpegROICfg   roi_jpeg_cfg;
 
     // input / output
     MppBufferGroup buf_grp;
@@ -132,6 +125,7 @@ typedef struct {
 
     RK_U32 user_data_enable;
     RK_U32 roi_enable;
+    RK_U32 roi_jpeg_enable;
 
     // rate control runtime parameter
     RK_S32 fps_in_flex;
@@ -148,6 +142,8 @@ typedef struct {
     RK_S32 gop_len;
     RK_S32 vi_len;
     RK_S32 scene_mode;
+    RK_S32 deblur_en;
+
     RK_S32 cu_qp_delta_depth;
     RK_S32 anti_flicker_str;
     RK_S32 atr_str_i;
@@ -157,6 +153,11 @@ typedef struct {
     RK_S32 sao_str_p;
     RK_S64 first_frm;
     RK_S64 first_pkt;
+
+    MppEncOSDData3  osd_data3;
+    KmppBuffer osd_buffer;
+    RK_U8 *osd_pattern;
+    RK_U32 jpeg_osd_case;
 } MpiEncTestData;
 
 /* For each instance thread return value */
@@ -206,7 +207,11 @@ static RK_S32 get_mdinfo_size(MpiEncTestData *p, MppCodingType type)
     RK_S32 md_size;
     RK_U32 w = p->hor_stride, h = p->ver_stride;
 
-    if (soc_type == ROCKCHIP_SOC_RK3588) {
+    if (soc_type == ROCKCHIP_SOC_RV1126B) {
+        md_size = (MPP_VIDEO_CodingHEVC == type) ?
+                  (MPP_ALIGN(w, 32) >> 5) * (MPP_ALIGN(h, 32) >> 5) * 20 :
+                  (MPP_ALIGN(w, 64) >> 6) * (MPP_ALIGN(h, 16) >> 4) * 16;
+    } else if (soc_type == ROCKCHIP_SOC_RK3588) {
         md_size = (MPP_ALIGN(w, 64) >> 6) * (MPP_ALIGN(h, 64) >> 6) * 32;
     } else {
         md_size = (MPP_VIDEO_CodingHEVC == type) ?
@@ -238,14 +243,18 @@ static MPP_RET kmpp_cfg_init(MpiEncMultiCtxInfo *info)
     mpp_venc_kcfg_set_u32(init_kcfg, "buf_size", 0);
     mpp_venc_kcfg_set_u32(init_kcfg, "max_strm_cnt", 0);
     mpp_venc_kcfg_set_u32(init_kcfg, "shared_buf_en", 0);
-    mpp_venc_kcfg_set_u32(init_kcfg, "smart_en", 0);
+    mpp_venc_kcfg_set_u32(init_kcfg, "smart_en", p->rc_mode == MPP_ENC_RC_MODE_SMTRC);
     mpp_venc_kcfg_set_u32(init_kcfg, "max_width", p->width);
     mpp_venc_kcfg_set_u32(init_kcfg, "max_height", p->height);
     mpp_venc_kcfg_set_u32(init_kcfg, "max_lt_cnt", 0);
-    mpp_venc_kcfg_set_u32(init_kcfg, "qpmap_en", 0);
+    mpp_venc_kcfg_set_u32(init_kcfg, "qpmap_en", p->deblur_en);
     mpp_venc_kcfg_set_u32(init_kcfg, "chan_dup", 0);
     mpp_venc_kcfg_set_u32(init_kcfg, "tmvp_enable", 0);
     mpp_venc_kcfg_set_u32(init_kcfg, "only_smartp", 0);
+    /* set notify mode to zero to disable rockit ko call back */
+    mpp_venc_kcfg_set_u32(init_kcfg, "ntfy_mode", 0);
+    /* set input timeout to block mode to insure put_frame ioctl return while encoding finished */
+    mpp_venc_kcfg_set_s32(init_kcfg, "input_timeout", MPP_POLL_BLOCK);
 
     ret = p->mpi->control(p->ctx, MPP_SET_VENC_INIT_KCFG, init_kcfg);
     if (ret)
@@ -278,6 +287,8 @@ MPP_RET test_ctx_init(MpiEncMultiCtxInfo *info)
         mpp_log("jpege default encode only one frame. Use -n [num] for rc case\n");
         p->frame_num = 1;
     }
+
+    p->frm_step     = cmd->frm_step;
     p->gop_mode     = cmd->gop_mode;
     p->gop_len      = cmd->gop_len;
     p->vi_len       = cmd->vi_len;
@@ -288,6 +299,7 @@ MPP_RET test_ctx_init(MpiEncMultiCtxInfo *info)
     p->fps_out_den  = cmd->fps_out_den;
     p->fps_out_num  = cmd->fps_out_num;
     p->scene_mode   = cmd->scene_mode;
+    p->deblur_en    = cmd->deblur_en;
     p->cu_qp_delta_depth = cmd->cu_qp_delta_depth;
     p->anti_flicker_str = cmd->anti_flicker_str;
     p->atr_str_i = cmd->atr_str_i;
@@ -428,6 +440,8 @@ MPP_RET test_mpp_enc_cfg_setup(MpiEncMultiCtxInfo *info)
     if (!p->bps)
         p->bps = p->width * p->height / 8 * (p->fps_out_num / p->fps_out_den);
 
+    mpp_enc_cfg_set_s32(cfg, "codec:type", p->type);
+
     /* setup preprocess parameters */
     mpp_enc_cfg_set_s32(cfg, "prep:width", p->width);
     mpp_enc_cfg_set_s32(cfg, "prep:height", p->height);
@@ -488,6 +502,7 @@ MPP_RET test_mpp_enc_cfg_setup(MpiEncMultiCtxInfo *info)
 
     /* setup qp for different codec and rc_mode */
     switch (p->type) {
+    case MPP_VIDEO_CodingAVC :
     case MPP_VIDEO_CodingHEVC : {
         switch (p->rc_mode) {
         case MPP_ENC_RC_MODE_FIXQP : {
@@ -706,6 +721,8 @@ MPP_RET test_mpp_enc_cfg_setup(MpiEncMultiCtxInfo *info)
 
     /* setup test mode by env */
     mpp_env_get_u32("osd_enable", &p->osd_enable, 0);
+    mpp_env_get_u32("roi_jpeg_enable", &p->roi_jpeg_enable, 0);
+    mpp_env_get_u32("jpeg_osd_case", &p->jpeg_osd_case, 0);
     mpp_env_get_u32("osd_mode", &p->osd_mode, MPP_ENC_OSD_PLT_TYPE_DEFAULT);
     mpp_env_get_u32("roi_enable", &p->roi_enable, 0);
     mpp_env_get_u32("user_data_enable", &p->user_data_enable, 0);
@@ -732,9 +749,11 @@ MPP_RET test_mpp_run(MpiEncMultiCtxInfo *info)
     MPP_RET ret = MPP_OK;
     RK_FLOAT psnr_const = 0;
     RK_U32 sse_unit_in_pixel = 0;
+    RK_U32 soc_type;
 
     memset(&checkcrc, 0, sizeof(checkcrc));
     checkcrc.sum = mpp_malloc(RK_ULONG, 512);
+    soc_type = mpp_get_soc_type();
 
     if (p->type == MPP_VIDEO_CodingAVC || p->type == MPP_VIDEO_CodingHEVC) {
         MppPacket packet = NULL;
@@ -799,7 +818,7 @@ MPP_RET test_mpp_run(MpiEncMultiCtxInfo *info)
             if (p->cam_ctx == NULL) {
                 mpp_buffer_sync_begin(p->frm_buf);
                 ret = fill_image(buf, p->width, p->height, p->hor_stride,
-                                 p->ver_stride, p->fmt, p->frame_count);
+                                 p->ver_stride, p->fmt, p->frame_count * p->frm_step);
                 if (ret)
                     goto RET;
                 mpp_buffer_sync_end(p->frm_buf);
@@ -845,7 +864,7 @@ MPP_RET test_mpp_run(MpiEncMultiCtxInfo *info)
         mpp_meta_set_packet(meta, KEY_OUTPUT_PACKET, packet);
         mpp_meta_set_buffer(meta, KEY_MOTION_INFO, p->md_info);
 
-        if (p->osd_enable || p->user_data_enable || p->roi_enable) {
+        if (p->osd_enable || p->user_data_enable || p->roi_enable || p->roi_jpeg_enable) {
             if (p->user_data_enable) {
                 MppEncUserData user_data;
                 char *str = "this is user data\n";
@@ -879,23 +898,42 @@ MPP_RET test_mpp_run(MpiEncMultiCtxInfo *info)
             }
 
             if (p->osd_enable) {
-                /* gen and cfg osd plt */
-                mpi_enc_gen_osd_plt(&p->osd_plt, p->frame_count);
+                if (soc_type == ROCKCHIP_SOC_RV1126B) {
+                    /* osd for RV1126B use struct MppEncOSDData3 */
+                    RK_S32 osd_case;
+                    if (!p->osd_pattern) {
+                        osd3_gen_smpte_bar_argb(&p->osd_pattern);
+                    }
 
-                p->osd_plt_cfg.change = MPP_ENC_OSD_PLT_CFG_CHANGE_ALL;
-                p->osd_plt_cfg.type = MPP_ENC_OSD_PLT_TYPE_USERDEF;
-                p->osd_plt_cfg.plt = &p->osd_plt;
+                    if (p->type == MPP_VIDEO_CodingMJPEG) {
+                        osd_case = p->jpeg_osd_case;
+                    } else {
+                        osd_case = p->frame_count;
+                    }
 
-                ret = mpi->control(ctx, MPP_ENC_SET_OSD_PLT_CFG, &p->osd_plt_cfg);
-                if (ret) {
-                    mpp_err("mpi control enc set osd plt failed ret %d\n", ret);
-                    goto RET;
+                    osd3_get_test_case(&p->osd_data3, p->osd_pattern,
+                                       (RK_U32)osd_case % OSD_CASE_BUTT, &p->osd_buffer);
+
+                    mpp_meta_set_ptr(meta, KEY_OSD_DATA3, (void*)&p->osd_data3);
+                } else {
+                    /* gen and cfg osd plt */
+                    mpi_enc_gen_osd_plt(&p->osd_plt, p->frame_count);
+
+                    p->osd_plt_cfg.change = MPP_ENC_OSD_PLT_CFG_CHANGE_ALL;
+                    p->osd_plt_cfg.type = MPP_ENC_OSD_PLT_TYPE_USERDEF;
+                    p->osd_plt_cfg.plt = &p->osd_plt;
+
+                    ret = mpi->control(ctx, MPP_ENC_SET_OSD_PLT_CFG, &p->osd_plt_cfg);
+                    if (ret) {
+                        mpp_err("mpi control enc set osd plt failed ret %d\n", ret);
+                        goto RET;
+                    }
+
+                    /* gen and cfg osd plt */
+                    mpi_enc_gen_osd_data(&p->osd_data, p->buf_grp, p->width,
+                                         p->height, p->frame_count);
+                    mpp_meta_set_ptr(meta, KEY_OSD_DATA, (void*)&p->osd_data);
                 }
-
-                /* gen and cfg osd plt */
-                mpi_enc_gen_osd_data(&p->osd_data, p->buf_grp, p->width,
-                                     p->height, p->frame_count);
-                mpp_meta_set_ptr(meta, KEY_OSD_DATA, (void*)&p->osd_data);
             }
 
             if (p->roi_enable) {
@@ -924,6 +962,37 @@ MPP_RET test_mpp_run(MpiEncMultiCtxInfo *info)
 
                 /* send roi info by metadata */
                 mpp_enc_roi_setup_meta(p->roi_ctx, meta);
+            }
+
+            if (p->roi_jpeg_enable) {
+                RK_U32 index;
+                RK_U32 width = 128;
+                RK_U32 height = 128;
+                RK_U32 start_x = 0;
+                RK_U32 start_y = 0;
+
+                p->roi_jpeg_cfg.change = 1;
+                p->roi_jpeg_cfg.non_roi_en = 1;
+                p->roi_jpeg_cfg.non_roi_level = 0;
+
+                for (index = 0; index < 16; index++) {
+                    if ((start_x + width) > p->width || (start_y + height) > p->height)
+                        break;
+                    p->roi_jpeg_cfg.regions[index].roi_en = 1;
+                    p->roi_jpeg_cfg.regions[index].x = start_x;
+                    p->roi_jpeg_cfg.regions[index].y = start_y;
+                    p->roi_jpeg_cfg.regions[index].w = width;
+                    p->roi_jpeg_cfg.regions[index].h = height;
+                    p->roi_jpeg_cfg.regions[index].level = 63;
+
+                    start_x += width;
+                    start_y += height;
+                }
+
+                if (cmd->kmpp_en)
+                    ret = mpi->control(ctx, MPP_ENC_SET_JPEG_ROI_CFG, &p->roi_jpeg_cfg);
+                else
+                    mpp_meta_set_ptr(meta, KEY_JPEG_ROI_DATA, (void*)&p->roi_jpeg_cfg);
             }
         }
 
@@ -1128,7 +1197,10 @@ void *enc_test(void *arg)
         goto MPP_TEST_OUT;
     }
 
-    ret = mpp_enc_cfg_init(&p->cfg);
+    if (cmd->kmpp_en)
+        ret = mpp_enc_cfg_init_k(&p->cfg);
+    else
+        ret = mpp_enc_cfg_init(&p->cfg);
     if (ret) {
         mpp_err_f("mpp_enc_cfg_init failed ret %d\n", ret);
         goto MPP_TEST_OUT;
@@ -1198,6 +1270,11 @@ MPP_TEST_OUT:
         p->osd_data.buf = NULL;
     }
 
+    if (p->osd_buffer) {
+        kmpp_obj_put_f(p->osd_buffer);
+        p->osd_buffer = NULL;
+    }
+
     if (p->buf_grp) {
         mpp_buffer_group_put(p->buf_grp);
         p->buf_grp = NULL;
@@ -1209,6 +1286,11 @@ MPP_TEST_OUT:
     }
     if (p->init_kcfg)
         mpp_venc_kcfg_deinit(p->init_kcfg);
+
+    if (p->osd_pattern) {
+        free(p->osd_pattern);
+        p->osd_pattern = NULL;
+    }
 
     test_ctx_deinit(p);
 

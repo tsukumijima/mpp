@@ -142,10 +142,7 @@ static void fill_picture_parameters(const HEVCContext *h,
 
     pp->IdrPicFlag = (h->first_nal_type == 19 || h->first_nal_type == 20);
     pp->IrapPicFlag = (h->first_nal_type >= 16 && h->first_nal_type <= 23);
-    pp->IntraPicFlag =  (h->first_nal_type >= 16 && h->first_nal_type <= 23) ||
-                        (h->sh.slice_type == I_SLICE || (h->recovery.valid_flag &&
-                                                         h->recovery.first_frm_valid &&
-                                                         h->recovery.first_frm_id == current_picture->poc));
+    pp->IntraPicFlag =  (h->first_nal_type >= 16 && h->first_nal_type <= 23) || h->sh.slice_type == I_SLICE;
     pp->pps_cb_qp_offset            = pps->cb_qp_offset;
     pp->pps_cr_qp_offset            = pps->cr_qp_offset;
     if (pps->tiles_enabled_flag) {
@@ -168,8 +165,9 @@ static void fill_picture_parameters(const HEVCContext *h,
     pp->slice_segment_header_extension_present_flag = pps->slice_header_extension_present_flag;
     pp->CurrPicOrderCntVal               = h->poc;
     pp->ps_update_flag                   = h->ps_need_upate;
+    pp->rps_update_flag                  = h->rps_need_upate || h->ps_need_upate;
 
-    if (pp->ps_update_flag) {
+    if (pp->rps_update_flag) {
         for (i = 0; i < 32; i++) {
             pp->sps_lt_rps[i].lt_ref_pic_poc_lsb = sps->lt_ref_pic_poc_lsb_sps[i];
             pp->sps_lt_rps[i].used_by_curr_pic_lt_flag = sps->used_by_curr_pic_lt_sps_flag[i];

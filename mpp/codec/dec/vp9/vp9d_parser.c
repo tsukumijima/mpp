@@ -387,11 +387,12 @@ static RK_S32 vp9_alloc_frame(Vp9CodecContext *ctx, VP9Frame *frame)
     mpp_frame_set_width(frame->f, ctx->width);
     mpp_frame_set_height(frame->f, ctx->height);
 
-    mpp_frame_set_hor_stride(frame->f, ctx->width * s->bpp / 8);
-    mpp_frame_set_ver_stride(frame->f, ctx->height);
+    mpp_frame_set_hor_stride(frame->f, 0);
+    mpp_frame_set_ver_stride(frame->f, 0);
     mpp_frame_set_errinfo(frame->f, 0);
     mpp_frame_set_discard(frame->f, 0);
     mpp_frame_set_pts(frame->f, s->pts);
+    mpp_frame_set_dts(frame->f, s->dts);
     // set current poc
     s->cur_poc++;
     mpp_frame_set_poc(frame->f, s->cur_poc);
@@ -1656,6 +1657,7 @@ RK_S32 vp9_parser_frame(Vp9CodecContext *ctx, HalDecTask *task)
     size = (RK_S32)mpp_packet_get_length(ctx->pkt);
 
     s->pts = mpp_packet_get_pts(ctx->pkt);
+    s->dts = mpp_packet_get_dts(ctx->pkt);
 
     vp9d_dbg(VP9D_DBG_HEADER, "data size %d", size);
     if (size <= 0) {
@@ -1673,6 +1675,7 @@ RK_S32 vp9_parser_frame(Vp9CodecContext *ctx, HalDecTask *task)
 
             mpp_buf_slot_get_prop(s->slots, s->refs[ref].slot_index, SLOT_FRAME_PTR, &frame);
             mpp_frame_set_pts(frame, s->pts);
+            mpp_frame_set_dts(frame, s->dts);
             mpp_buf_slot_set_flag(s->slots, s->refs[ref].slot_index, SLOT_QUEUE_USE);
             mpp_buf_slot_enqueue(s->slots, s->refs[ref].slot_index, QUEUE_DISPLAY);
             s->refs[ref].ref->is_output = 1;

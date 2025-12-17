@@ -25,12 +25,13 @@
 #include "kmpp.h"
 #include "kmpp_obj.h"
 #include "mpp_soc.h"
+#include "kmpp_frame.h"
 #include "mpp_buffer_impl.h"
 #include "mpp_frame_impl.h"
 #include "mpp_packet_impl.h"
-
+#include "kmpp_packet.h"
 #include "mpp_vcodec_client.h"
-#include "mpp_enc_cfg_impl.h"
+#include "mpp_enc_cfg.h"
 
 typedef struct KmppFrameInfos_t {
     RK_U32  width;
@@ -63,40 +64,16 @@ typedef struct KmppFrameInfos_t {
     };
 } KmppFrameInfos;
 
-typedef struct KmppVencPacketInfo_t {
-    RK_U32      flag;
-    RK_U32      temporal_id;
-    RK_U32      packet_offset;
-    RK_U32      packet_len;
-} KmppVencPacketInfo;
-
-typedef struct VencPacket_t {
-    RK_U64               u64priv_data;
-    RK_U64               u64packet_addr;
-    RK_U32               len;
-    RK_U32               buf_size;
-
-    RK_U64               u64pts;
-    RK_U64               u64dts;
-    RK_U32               flag;
-    RK_U32               temporal_id;
-    RK_U32               offset;
-    RK_U32               data_num;
-    KmppVencPacketInfo   packet[8];
-} VencPacket;
-
 static void kmpp_release_venc_packet(void *ctx, void *arg)
 {
-    Kmpp *p = (Kmpp *)ctx;
-    VencPacket *pkt = (VencPacket *)arg;
+    KmppPacket pkt = (KmppPacket)arg;
 
     if (!ctx || !pkt) {
         mpp_err_f("invalid input ctx %p pkt %p\n", ctx, pkt);
         return;
     }
-    mpp_vcodec_ioctl(p->mClientFd, VCODEC_CHAN_OUT_STRM_END, 0, sizeof(VencPacket), pkt);
 
-    mpp_mem_pool_put(p->mVencPacketPool, pkt);
+    kmpp_packet_put(pkt);
 }
 
 static MPP_RET init(Kmpp *ctx, MppCtxType type, MppCodingType coding)
@@ -126,6 +103,7 @@ static MPP_RET init(Kmpp *ctx, MppCtxType type, MppCodingType coding)
     hnd = kmpp_obj_to_shm(ctx->mVencInitKcfg);
     size = kmpp_obj_to_shm_size(ctx->mVencInitKcfg);
     kmpp_obj_get_u32(ctx->mVencInitKcfg, "chan_dup", &ctx->mChanDup);
+    kmpp_obj_set_s32(ctx->mVencInitKcfg, "chan_fd", ctx->mClientFd);
 
     ret = mpp_vcodec_ioctl(ctx->mClientFd, VCODEC_CHAN_CREATE, 0, size, hnd);
     if (ret) {
@@ -143,8 +121,6 @@ static MPP_RET init(Kmpp *ctx, MppCtxType type, MppCodingType coding)
 
     if (ctx->mPacketGroup == NULL)
         mpp_buffer_group_get_internal(&ctx->mPacketGroup, MPP_BUFFER_TYPE_ION);
-
-    ctx->mVencPacketPool = mpp_mem_pool_init(sizeof(VencPacket));
 
     kmpp_obj_get_u32(ctx->mVencInitKcfg, "chan_id", &chan_id);
     mpp_log("client %d open chan_id %d ok", ctx->mClientFd, chan_id);
@@ -193,9 +169,9 @@ static void clear(Kmpp *ctx)
         ctx->mPacketGroup = NULL;
     }
 
-    if (ctx->mVencPacketPool) {
-        mpp_mem_pool_deinit(ctx->mVencPacketPool);
-        ctx->mVencPacketPool = NULL;
+    if (ctx->mKframe) {
+        kmpp_frame_put(ctx->mKframe);
+        ctx->mKframe = NULL;
     }
 }
 
@@ -289,9 +265,9 @@ static MPP_RET get_frame(Kmpp *ctx, MppFrame *frame)
 
 static MPP_RET put_frame(Kmpp *ctx, MppFrame frame)
 {
-    KmppFrameInfos frame_info;
-    MppBuffer buf = NULL;
     MPP_RET ret = MPP_OK;
+    KmppShmPtr *ptr = NULL;
+    rk_s32 size;
 
     if (!ctx)
         return MPP_ERR_VALUE;
@@ -299,45 +275,72 @@ static MPP_RET put_frame(Kmpp *ctx, MppFrame frame)
     if (!ctx->mInitDone)
         return MPP_ERR_INIT;
 
-    buf = mpp_frame_get_buffer(frame);
-    memset(&frame_info, 0, sizeof(frame_info));
-    frame_info.width = mpp_frame_get_width(frame);
-    frame_info.height = mpp_frame_get_height(frame);
-    frame_info.hor_stride = mpp_frame_get_hor_stride(frame);
-    frame_info.ver_stride = mpp_frame_get_ver_stride(frame);
-    frame_info.hor_stride_pixel = mpp_frame_get_hor_stride_pixel(frame);
-    frame_info.offset_x = mpp_frame_get_offset_x(frame);
-    frame_info.offset_y = mpp_frame_get_offset_y(frame);
-    frame_info.fmt = mpp_frame_get_fmt(frame);
-    frame_info.fd = mpp_buffer_get_fd(buf);
-    // frame_info.pts = mpp_frame_get_pts(frame);
-    // frame_info.jpeg_chan_id = mpp_frame_get_jpege_chan_id(frame);
-    // frame_info.eos = mpp_frame_get_eos(frame);
-    // frame_info.pskip = mpp_frame_get_pskip_request(frame);
-    // frame_info.pskip_num = mpp_frame_get_pskip_num(frame);
-    if (mpp_frame_has_meta(frame)) {
-        MppMeta meta = mpp_frame_get_meta(frame);
-        MppPacket packet = NULL;
+    if (!__check_is_mpp_frame(frame)) {
+        MppFrameImpl *impl = (MppFrameImpl *)frame;
 
-        mpp_meta_get_packet(meta, KEY_OUTPUT_PACKET, &packet);
-        ctx->mPacket = packet;
+        if (ctx->mKframe == NULL)
+            kmpp_frame_get(&ctx->mKframe);
 
-        /* set roi */
-        {
-            MppEncROICfg *roi_data = NULL;
-            MppEncROICfgLegacy roi_data0;
+        kmpp_frame_set_width(ctx->mKframe, impl->width);
+        kmpp_frame_set_height(ctx->mKframe, impl->height);
+        kmpp_frame_set_hor_stride(ctx->mKframe, impl->hor_stride);
+        kmpp_frame_set_ver_stride(ctx->mKframe, impl->ver_stride);
+        kmpp_frame_set_fmt(ctx->mKframe, impl->fmt);
+        kmpp_frame_set_eos(ctx->mKframe, impl->eos);
+        kmpp_frame_set_pts(ctx->mKframe, impl->pts);
+        kmpp_frame_set_dts(ctx->mKframe, impl->dts);
+        kmpp_frame_set_offset_x(ctx->mKframe, impl->offset_x);
+        kmpp_frame_set_offset_y(ctx->mKframe, impl->offset_y);
+        kmpp_frame_set_hor_stride_pixel(ctx->mKframe, impl->hor_stride_pixel);
 
-            mpp_meta_get_ptr(meta, KEY_ROI_DATA, (void**)&roi_data);
-            if (roi_data) {
-                roi_data0.change = 1;
-                roi_data0.number = roi_data->number;
-                memcpy(roi_data0.regions, roi_data->regions, roi_data->number * sizeof(MppEncROIRegion));
-                ctx->mApi->control(ctx, MPP_ENC_SET_ROI_CFG, &roi_data0);
+        if (impl->buffer) {
+            kmpp_frame_set_buf_fd(ctx->mKframe, mpp_buffer_get_fd(impl->buffer));
+        } else {
+            mpp_loge_f("kmpp put_frame buf is NULL\n");
+            return MPP_NOK;
+        }
+
+        if (mpp_frame_has_meta(frame)) {
+            MppMeta meta = mpp_frame_get_meta(frame);
+            MppPacket packet = NULL;
+
+            mpp_meta_get_packet(meta, KEY_OUTPUT_PACKET, &packet);
+            ctx->mPacket = packet;
+
+            /* set roi */
+            {
+                MppEncROICfg *roi_data = NULL;
+                MppEncROICfgLegacy roi_data0;
+
+                mpp_meta_get_ptr(meta, KEY_ROI_DATA, (void**)&roi_data);
+                if (roi_data) {
+                    roi_data0.change = 1;
+                    roi_data0.number = roi_data->number;
+                    memcpy(roi_data0.regions, roi_data->regions, roi_data->number * sizeof(MppEncROIRegion));
+                    ctx->mApi->control(ctx, MPP_ENC_SET_ROI_CFG, &roi_data0);
+                }
+            }
+
+            /* set osd */
+            {
+                MppEncOSDData3 *osd_data3 = NULL;
+
+                mpp_meta_get_ptr(meta, KEY_OSD_DATA3, (void**)&osd_data3);
+                if (osd_data3) {
+                    osd_data3->change = 1;
+                    ctx->mApi->control(ctx, MPP_ENC_SET_OSD_DATA_CFG, osd_data3);
+                }
             }
         }
+
+        ptr = kmpp_obj_to_shm(ctx->mKframe);
+        size = kmpp_obj_to_shm_size(ctx->mKframe);
+    } else {
+        ptr = kmpp_obj_to_shm(frame);
+        size = kmpp_obj_to_shm_size(frame);
     }
 
-    ret = mpp_vcodec_ioctl(ctx->mClientFd, VCODEC_CHAN_IN_FRM_RDY, 0, sizeof(frame_info), &frame_info);
+    ret = mpp_vcodec_ioctl(ctx->mClientFd, VCODEC_CHAN_IN_FRM_RDY, 0, size, ptr);
     if (ret)
         mpp_err("chan %d VCODEC_CHAN_IN_FRM_RDY failed\n", ctx->mChanId);
 
@@ -362,53 +365,59 @@ static MPP_RET get_packet(Kmpp *ctx, MppPacket *packet)
 
     memcpy(&timeout, &ctx->mTimeout, sizeof(timeout));
     ret = select(ctx->mClientFd + 1, &read_fds, NULL, NULL, &timeout);
-    if (ret <= 0) {
-        mpp_err("get venc stream error %d\n", ret);
+    if (ret <= 0)
         return MPP_NOK;
-    }
 
     if (FD_ISSET(ctx->mClientFd, &read_fds)) {
-        VencPacket *venc_packet = mpp_mem_pool_get(ctx->mVencPacketPool);
+        KmppShmPtr sptr;
+        MppPacket pkt = NULL;
+        KmppPacket kmpp_pkt = NULL;
+        RK_S32 len;
+        RK_U32 flag;
+        KmppShmPtr pos;
+        RK_S64 dts;
+        RK_S64 pts;
 
-        ret = mpp_vcodec_ioctl(ctx->mClientFd, VCODEC_CHAN_OUT_STRM_BUF_RDY, 0, sizeof(VencPacket), venc_packet);
+        ret = mpp_vcodec_ioctl(ctx->mClientFd, VCODEC_CHAN_OUT_PKT_RDY,
+                               0, sizeof(KmppShmPtr), &sptr);
         if (ret) {
-            mpp_err("chan %d VCODEC_CHAN_OUT_STRM_BUF_RDY failed\n", ctx->mChanId);
+            mpp_err("chan %d VCODEC_CHAN_OUT_PKT_RDY failed\n", ctx->mChanId);
             return MPP_NOK;
         }
 
-        if (venc_packet->len) {
-            MppPacket pkt = NULL;
-            void *ptr = NULL;
-            RK_U32 len = venc_packet->len;
+        kmpp_obj_get_by_sptr_f(&kmpp_pkt, &sptr);
+        kmpp_packet_get_flag(kmpp_pkt, &flag);
+        kmpp_packet_get_length(kmpp_pkt, &len);
+        kmpp_packet_get_pos(kmpp_pkt, &pos);
+        kmpp_packet_get_dts(kmpp_pkt, &dts);
+        kmpp_packet_get_pts(kmpp_pkt, &pts);
 
-            ptr = (void *)(intptr_t)(venc_packet->u64priv_data);
+        if (ctx->mPacket) {
+            void *dst;
 
-            if (ptr) {
-                if (ctx->mPacket) {
-                    void *dst;
-
-                    pkt = ctx->mPacket;
-                    ctx->mPacket = NULL;
-                    dst = mpp_packet_get_pos(pkt);
-                    memcpy(dst, ptr + venc_packet->offset, len);
-                    mpp_vcodec_ioctl(ctx->mClientFd, VCODEC_CHAN_OUT_STRM_END, 0, sizeof(VencPacket), venc_packet);
-                    mpp_packet_set_length(pkt, len);
-                    mpp_mem_pool_put(ctx->mVencPacketPool, venc_packet);
-                } else {
-                    mpp_packet_init(&pkt, ptr + venc_packet->offset, len);
-                    mpp_packet_set_release(pkt, kmpp_release_venc_packet, ctx, venc_packet);
-                }
-                mpp_packet_set_dts(pkt, venc_packet->u64dts);
-                mpp_packet_set_pts(pkt, venc_packet->u64pts);
-                mpp_packet_set_flag(pkt, venc_packet->flag);
-                if (venc_packet->flag & MPP_PACKET_FLAG_INTRA) {
-                    MppMeta meta = mpp_packet_get_meta(pkt);
-
-                    mpp_meta_set_s32(meta, KEY_OUTPUT_INTRA, 1);
-                }
+            pkt = ctx->mPacket;
+            ctx->mPacket = NULL;
+            if (pos.uptr) {
+                dst = mpp_packet_get_pos(pkt);
+                memcpy(dst, pos.uptr, len);
             }
-            *packet = pkt;
+
+            kmpp_packet_put(kmpp_pkt);
+            mpp_packet_set_length(pkt, len);
+        } else {
+            mpp_packet_init(&pkt, pos.uptr, len);
+            mpp_packet_set_release(pkt, kmpp_release_venc_packet, ctx, kmpp_pkt);
         }
+
+        mpp_packet_set_dts(pkt, dts);
+        mpp_packet_set_pts(pkt, pts);
+        mpp_packet_set_flag(pkt, flag);
+        if (flag & MPP_PACKET_FLAG_INTRA) {
+            MppMeta meta = mpp_packet_get_meta(pkt);
+
+            mpp_meta_set_s32(meta, KEY_OUTPUT_INTRA, 1);
+        }
+        *packet = pkt;
     }
 
     return MPP_OK;
@@ -416,8 +425,7 @@ static MPP_RET get_packet(Kmpp *ctx, MppPacket *packet)
 
 static MPP_RET release_packet(Kmpp *ctx, MppPacket *packet)
 {
-    VencPacket *enc_packet  = (VencPacket *) *packet;
-    MPP_RET ret = MPP_OK;
+    KmppPacket pkt  = (KmppPacket) * packet;
 
     if (!ctx)
         return MPP_ERR_VALUE;
@@ -431,11 +439,9 @@ static MPP_RET release_packet(Kmpp *ctx, MppPacket *packet)
     if (ctx->mClientFd < 0)
         return MPP_NOK;
 
-    ret = mpp_vcodec_ioctl(ctx->mClientFd, VCODEC_CHAN_OUT_STRM_END, 0, sizeof(*enc_packet), enc_packet);
-    if (ret)
-        mpp_err("chan %d VCODEC_CHAN_OUT_STRM_END failed\n", ctx->mChanId);
+    kmpp_packet_put(pkt);
 
-    return ret;
+    return MPP_OK;
 }
 
 static MPP_RET poll(Kmpp *ctx, MppPortType type, MppPollType timeout)
@@ -486,7 +492,15 @@ static MPP_RET control(Kmpp *ctx, MpiCmd cmd, MppParam param)
     switch (cmd) {
     case MPP_ENC_SET_CFG :
     case MPP_ENC_GET_CFG : {
-        size = sizeof(MppEncCfgImpl);
+        KmppObj obj = (KmppObj)param;
+
+        if (kmpp_obj_is_kobj(obj)) {
+            arg = kmpp_obj_to_shm(obj);
+            size = kmpp_obj_to_shm_size(obj);
+        } else {
+            mpp_loge("can not set non-kobj %p to kmpp\n", obj);
+            return MPP_NOK;
+        }
     } break;
     case MPP_ENC_SET_HEADER_MODE :
     case MPP_ENC_SET_SEI_CFG : {
@@ -500,9 +514,10 @@ static MPP_RET control(Kmpp *ctx, MpiCmd cmd, MppParam param)
     case MPP_ENC_SET_ROI_CFG: {
         size = sizeof(MppEncROICfgLegacy);
     } break;
-    // case MPP_ENC_SET_JPEG_ROI_CFG : {
-    //     size = sizeof(MppJpegROICfg);
-    // } break;
+    case MPP_ENC_SET_JPEG_ROI_CFG :
+    case MPP_ENC_GET_JPEG_ROI_CFG : {
+        size = sizeof(MppJpegROICfg);
+    } break;
     case MPP_ENC_SET_OSD_DATA_CFG: {
         size = sizeof(MppEncOSDData3);
     } break;

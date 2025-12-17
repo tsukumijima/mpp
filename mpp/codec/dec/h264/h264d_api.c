@@ -159,7 +159,7 @@ static MPP_RET free_vid_ctx(H264dVideoCtx_t *p_Vid)
     free_storable_picture(p_Vid->p_Dec, p_Vid->dec_pic);
 
     if (p_Vid->pic_st) {
-        mpp_mem_pool_deinit(p_Vid->pic_st);
+        mpp_mem_pool_deinit_f(p_Vid->pic_st);
         p_Vid->pic_st = NULL;
     }
 
@@ -187,7 +187,7 @@ static MPP_RET init_vid_ctx(H264dVideoCtx_t *p_Vid)
     p_Vid->active_subsps    = NULL;
     p_Vid->active_sps_id[0] = -1;
     p_Vid->active_sps_id[1] = -1;
-    p_Vid->pic_st = mpp_mem_pool_init(sizeof(H264_StorePic_t));
+    p_Vid->pic_st = mpp_mem_pool_init_f("h264d_pic_st", sizeof(H264_StorePic_t));
 __RETURN:
     return ret = MPP_OK;
 __FAILED:
@@ -355,9 +355,10 @@ MPP_RET h264d_init(void *decoder, ParserCfg *init)
     FUN_CHECK(ret = init_vid_ctx(p_Dec->p_Vid));
     FUN_CHECK(ret = init_dec_ctx(p_Dec));
     p_Dec->immediate_out = p_Dec->cfg->base.fast_out;
-    mpp_env_get_u32("force_fast_play_mode", &p_Dec->p_Vid->dpb_fast_out,
+    mpp_env_get_u32("force_fast_play_mode", &p_Dec->cfg->base.enable_fast_play,
                     p_Dec->cfg->base.enable_fast_play);
-    H264D_LOG("fast play mode: %d", p_Dec->p_Vid->dpb_fast_out);
+    p_Dec->p_Vid->dpb_fast_out = p_Dec->cfg->base.enable_fast_play;
+    H264D_LOG("fast play mode: %d", p_Dec->cfg->base.enable_fast_play);
     p_Dec->p_Vid->dpb_first_fast_played = 0;
     mpp_slots_set_prop(p_Dec->frame_slots, SLOTS_WIDTH_ALIGN, rkv_mblock_width_align);
 __RETURN:
@@ -457,9 +458,10 @@ MPP_RET h264d_reset(void *decoder)
     p_Dec->dxva_ctx->strm_offset = 0;
     p_Dec->dxva_ctx->slice_count = 0;
     p_Dec->last_frame_slot_idx   = -1;
-    mpp_env_get_u32("force_fast_play_mode", &p_Dec->p_Vid->dpb_fast_out,
+    mpp_env_get_u32("force_fast_play_mode", &p_Dec->cfg->base.enable_fast_play,
                     p_Dec->cfg->base.enable_fast_play);
-    H264D_LOG("fast play mode: %d", p_Dec->p_Vid->dpb_fast_out);
+    p_Dec->p_Vid->dpb_fast_out = p_Dec->cfg->base.enable_fast_play;
+    H264D_LOG("fast play mode: %d", p_Dec->cfg->base.enable_fast_play);
     p_Dec->p_Vid->dpb_first_fast_played = 0;
 
 __RETURN:
@@ -504,10 +506,11 @@ MPP_RET h264d_control(void *decoder, MpiCmd cmd_type, void *param)
 
     switch (cmd_type) {
     case MPP_DEC_SET_ENABLE_FAST_PLAY:
-        p_Dec->p_Vid->dpb_fast_out = (param) ? (*((RK_U32 *)param)) : (1);
-        mpp_env_get_u32("force_fast_play_mode", &p_Dec->p_Vid->dpb_fast_out,
-                        p_Dec->p_Vid->dpb_fast_out);
-        H264D_LOG("fast play mode: %d", p_Dec->p_Vid->dpb_fast_out);
+        p_Dec->cfg->base.enable_fast_play = (param) ? (*((RK_U32 *)param)) : (1);
+        mpp_env_get_u32("force_fast_play_mode", &p_Dec->cfg->base.enable_fast_play,
+                        p_Dec->cfg->base.enable_fast_play);
+        p_Dec->p_Vid->dpb_fast_out = p_Dec->cfg->base.enable_fast_play;
+        H264D_LOG("fast play mode: %d", p_Dec->cfg->base.enable_fast_play);
         break;
     case MPP_DEC_SET_MAX_USE_BUFFER_SIZE :
         p_Dec->p_Inp->max_buf_size = (param) ? (*((RK_U32 *)param)) : (0);

@@ -1,21 +1,12 @@
+/* SPDX-License-Identifier: Apache-2.0 OR MIT */
 /*
- * Copyright 2022 Rockchip Electronics Co. LTD
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (c) 2022 Rockchip Electronics Co., Ltd.
  */
 
 #ifndef __MPP_LOG_H__
 #define __MPP_LOG_H__
+
+#include <stdarg.h>
 
 #include "rk_type.h"
 #include "mpp_log_def.h"
@@ -87,6 +78,9 @@ void _mpp_log_l(int level, const char *tag, const char *fmt, const char *func, .
 
 void mpp_set_log_level(int level);
 int mpp_get_log_level(void);
+
+typedef void (*MppLogCb)(void *ctx, int level, const char *tag, const char *fmt, const char *func, va_list args);
+int mpp_set_log_callback(void *ctx, MppLogCb cb);
 
 /* deprecated function */
 void _mpp_log(const char *tag, const char *fmt, const char *func, ...);

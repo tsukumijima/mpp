@@ -199,7 +199,8 @@ struct MppFrameImpl_t {
 extern "C" {
 #endif
 
-MPP_RET mpp_frame_copy(MppFrame frame, MppFrame next);
+MppFrame mpp_frame_dup(MppFrame src);
+MPP_RET mpp_frame_copy(MppFrame dst, MppFrame src);
 MPP_RET mpp_frame_info_cmp(MppFrame frame0, MppFrame frame1);
 RK_U32  mpp_frame_get_fbc_offset(MppFrame frame);
 RK_U32  mpp_frame_get_fbc_stride(MppFrame frame);
@@ -214,7 +215,7 @@ MppFrameStatus *mpp_frame_get_status(MppFrame frame);
 void mpp_frame_set_stopwatch_enable(MppFrame frame, RK_S32 enable);
 MppStopwatch mpp_frame_get_stopwatch(const MppFrame frame);
 
-MPP_RET check_is_mpp_frame(void *pointer);
+MPP_RET __check_is_mpp_frame(void *frame);
 
 #ifdef __cplusplus
 }

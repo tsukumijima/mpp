@@ -2363,7 +2363,7 @@ static RK_S32 mpp_av1_metadata_scalability(AV1Context *ctx, BitReadCtx_t *gb,
     return 0;
 }
 
-static RK_S32 mpp_av1_get_dolby_rpu(AV1Context *ctx, BitReadCtx_t *gb)
+static RK_S32 mpp_av1_get_dlby_rpu(AV1Context *ctx, BitReadCtx_t *gb)
 {
     MppFrameHdrDynamicMeta *hdr_dynamic_meta = ctx->hdr_dynamic_meta;
     RK_U32 emdf_payload_size = 0;
@@ -2418,8 +2418,8 @@ static RK_S32 mpp_av1_get_dolby_rpu(AV1Context *ctx, BitReadCtx_t *gb)
     }
 
     hdr_dynamic_meta->size = mpp_writer_bytes(&bit_ctx);
-    hdr_dynamic_meta->hdr_fmt = DOLBY;
-    av1d_dbg(AV1D_DBG_STRMIN, "dolby rpu size %d -> %d\n",
+    hdr_dynamic_meta->hdr_fmt = DLBY;
+    av1d_dbg(AV1D_DBG_STRMIN, "dlby rpu size %d -> %d\n",
              emdf_payload_size, hdr_dynamic_meta->size);
 
     ctx->hdr_dynamic_meta = hdr_dynamic_meta;
@@ -2502,12 +2502,12 @@ static RK_S32 mpp_av1_metadata_itut_t35(AV1Context *ctx, BitReadCtx_t *gb,
              current->itu_t_t35_terminal_provider_code);
 
     switch (current->itu_t_t35_terminal_provider_code) {
-    case 0x3B: {/* dolby provider_code is 0x3b*/
+    case 0x3B: {/* dlby provider_code is 0x3b*/
         READ_BITS_LONG(gb, 32, &current->itu_t_t35_terminal_provider_oriented_code);
         av1d_dbg(AV1D_DBG_STRMIN, "itu_t_t35_terminal_provider_oriented_code 0x%x\n",
                  current->itu_t_t35_terminal_provider_oriented_code);
         if (current->itu_t_t35_terminal_provider_oriented_code == 0x800)
-            mpp_av1_get_dolby_rpu(ctx, gb);
+            mpp_av1_get_dlby_rpu(ctx, gb);
     } break;
     case 0x3C: {/* smpte2094_40 provider_code is 0x3c*/
         const RK_U16 smpte2094_40_provider_oriented_code = 0x0001;

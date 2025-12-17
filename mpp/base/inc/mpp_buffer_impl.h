@@ -1,17 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 OR MIT */
 /*
- * Copyright 2015 Rockchip Electronics Co. LTD
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (c) 2015 Rockchip Electronics Co., Ltd.
  */
 
 #ifndef __MPP_BUFFER_IMPL_H__
@@ -205,6 +194,7 @@ MPP_RET mpp_buffer_create(const char *tag, const char *caller, MppBufferGroupImp
 MPP_RET mpp_buffer_mmap(MppBufferImpl *buffer, const char* caller);
 MPP_RET mpp_buffer_ref_inc(MppBufferImpl *buffer, const char* caller);
 MPP_RET mpp_buffer_ref_dec(MppBufferImpl *buffer, const char* caller);
+MPP_RET mpp_buffer_discard(MppBufferImpl *buffer, const char* caller);
 MppBufferImpl *mpp_buffer_get_unused(MppBufferGroupImpl *p, size_t size, const char* caller);
 RK_U32  mpp_buffer_to_addr(MppBuffer buffer, size_t offset);
 MPP_RET mpp_buffer_attach_dev_f(const char *caller, MppBuffer buffer, MppDev dev);
@@ -221,8 +211,7 @@ MPP_RET mpp_buffer_group_reset(MppBufferGroupImpl *p);
 MPP_RET mpp_buffer_group_set_callback(MppBufferGroupImpl *p,
                                       MppBufCallback callback, void *arg);
 // mpp_buffer_group helper function
-void mpp_buffer_group_dump(MppBufferGroupImpl *p);
-void mpp_buffer_service_dump(const char *info);
+void mpp_buffer_group_dump(MppBufferGroupImpl *p, const char *caller);
 MppBufferGroupImpl *mpp_buffer_get_misc_group(MppBufferMode mode, MppBufferType type);
 
 #ifdef __cplusplus

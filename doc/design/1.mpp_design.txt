@@ -18,7 +18,7 @@ Linux.
 The second one is v4l2 driver which is developed for ChromeOS. It currently
 supports H.264/H.265/vp8/vp9. This driver is used on ChomeOS/Linux.
 
-Mpp plans to support serval userspace applications including OpenMax, FFmpeg,
+Mpp plans to support serval userspace applications including OpenMax,
 gstreamer, libva.
 
 
@@ -45,7 +45,7 @@ System Diagram
 
                 +---------------------------------------+
                 |                                       |
-                | ffmpeg / OpenMax / gstreamer / libva  |
+                |      OpenMax / gstreamer / libva      |
                 |                                       |
                 +---------------------------------------+
 
@@ -91,7 +91,7 @@ allocator.
 MPI (Media Process Interface) / MPP
 This module is on charge of interaction with external user. Mpi layer has two
 ways for user. The simple way - User can use put/get packet/frame function set.
-The advanced way - User has to config MppTask and use dequeue/enqueue funciton
+The advanced way - User has to config MppTask and use dequeue/enqueue function
 set to communicate with mpp. MppTask can carry different meta data and complete
 complex work.
 

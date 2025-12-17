@@ -1,17 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 OR MIT */
 /*
- * Copyright 2015 Rockchip Electronics Co. LTD
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (c) 2015 Rockchip Electronics Co., Ltd.
  */
 
 #ifndef __MPP_META_H__
@@ -67,6 +56,7 @@ typedef enum MppMetaKey_e {
     KEY_ENC_START_QP            = FOURCC_META('s', 't', 'r', 'q'),
     KEY_ENC_BPS_RT              = FOURCC_META('r', 't', 'b', 'r'),   /* realtime bps */
     KEY_ROI_DATA                = FOURCC_META('r', 'o', 'i', ' '),
+    KEY_JPEG_ROI_DATA           = FOURCC_META('j', 'r', 'o', 'i'),
     KEY_OSD_DATA                = FOURCC_META('o', 's', 'd', ' '),
     KEY_OSD_DATA2               = FOURCC_META('o', 's', 'd', '2'),
     KEY_OSD_DATA3               = FOURCC_META('o', 's', 'd', '3'),
@@ -130,8 +120,21 @@ typedef enum MppMetaKey_e {
      */
     KEY_QPMAP0                  = FOURCC_META('e', 'q', 'm', '0'),
 
-    /* input motion list for smart p rate control */
-    KEY_MV_LIST                 = FOURCC_META('m', 'v', 'l', 't'),
+    /*
+     * shared memory buffer for object dectection flag from NPU, for rv1126b
+     * Picture width is aligned to 16, each 16x16 block is 8bit data.
+     * H.264: 16x16 block is arranged in raster order.
+     * H.265: 16x16 block is reordered to ctu order then ctu raster order
+     */
+    KEY_NPU_SOBJ_FLAG           = FOURCC_META('n', 'p', 'u', 's'),
+    /* userspace object dectection flag from NPU, for rk3588 and rk3576 */
+    KEY_NPU_UOBJ_FLAG           = FOURCC_META('n', 'p', 'u', 'u'),
+
+    /*
+     * smart v4 encoder input key
+     */
+    KEY_BUFFER_UPSCALE          = FOURCC_META('u', 'b', 'u', 'f'),
+    KEY_BUFFER_DOWNSCALE        = FOURCC_META('d', 'b', 'u', 'f'),
 
     /* frame long-term reference frame operation */
     KEY_ENC_MARK_LTR            = FOURCC_META('m', 'l', 't', 'r'),
@@ -145,6 +148,18 @@ typedef enum MppMetaKey_e {
     KEY_DEC_TBN_EN              = FOURCC_META('t', 'b', 'e', 'n'),
     KEY_DEC_TBN_Y_OFFSET        = FOURCC_META('t', 'b', 'y', 'o'),
     KEY_DEC_TBN_UV_OFFSET       = FOURCC_META('t', 'b', 'c', 'o'),
+
+    /* combo frame */
+    KEY_COMBO_FRAME             = FOURCC_META('c', 'f', 'r', 'm'),
+    KEY_CHANNEL_ID              = FOURCC_META('c', 'h', 'a', 'n'),
+
+    /* Preprocess (pp) operation metat data */
+    /* Motion Detection output buffer */
+    KEY_PP_MD_BUF               = FOURCC_META('m', 'd', 'b', 'f'),
+    /* Occlusion Detection output buffer */
+    KEY_PP_OD_BUF               = FOURCC_META('o', 'd', 'b', 'f'),
+    /* pp output data */
+    KEY_PP_OUT                  = FOURCC_META('o', 'p', 'p', ' '),
 } MppMetaKey;
 
 #define mpp_meta_get(meta) mpp_meta_get_with_tag(meta, MODULE_TAG, __FUNCTION__)
@@ -159,6 +174,7 @@ extern "C" {
 MPP_RET mpp_meta_get_with_tag(MppMeta *meta, const char *tag, const char *caller);
 MPP_RET mpp_meta_put(MppMeta meta);
 RK_S32  mpp_meta_size(MppMeta meta);
+MppMeta mpp_meta_dup(MppMeta meta);
 
 MPP_RET mpp_meta_set_s32(MppMeta meta, MppMetaKey key, RK_S32 val);
 MPP_RET mpp_meta_set_s64(MppMeta meta, MppMetaKey key, RK_S64 val);

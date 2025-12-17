@@ -5,17 +5,22 @@
 
 #define  MODULE_TAG "kmpp_obj"
 
+#include <linux/types.h>
+
 #include <string.h>
 #include <sys/ioctl.h>
 
-#include "mpp_list.h"
 #include "mpp_env.h"
-#include "mpp_mem.h"
+#include "mpp_list.h"
+#include "mpp_lock.h"
 #include "mpp_debug.h"
 #include "mpp_common.h"
-#include "mpp_lock.h"
+#include "mpp_mem_pool.h"
+#include "mpp_singleton.h"
 
 #include "mpp_trie.h"
+#include "mpp_cfg_io.h"
+#include "kmpp_ioc.h"
 #include "kmpp_obj_impl.h"
 
 #define KMPP_SHM_IOC_MAGIC              'm'
@@ -25,11 +30,16 @@
 #define KMPP_SHM_IOC_PUT_SHM            _IOW(KMPP_SHM_IOC_MAGIC, 4, unsigned int)
 #define KMPP_SHM_IOC_DUMP               _IOW(KMPP_SHM_IOC_MAGIC, 5, unsigned int)
 
+#define KMPP_IOCTL_IOC_MAGIC            'i'
+#define KMPP_IOCTL_IOC_QUERY_INFO       _IOW(KMPP_IOCTL_IOC_MAGIC, 1, unsigned int)
+#define KMPP_IOCTL_IOC_PROC             _IOW(KMPP_IOCTL_IOC_MAGIC, 2, unsigned int)
+
 #define OBJ_DBG_FLOW                    (0x00000001)
 #define OBJ_DBG_SHARE                   (0x00000002)
 #define OBJ_DBG_ENTRY                   (0x00000004)
-#define OBJ_DBG_HOOK                    (0x00000008)
+#define OBJ_DBG_POOL                    (0x00000008)
 #define OBJ_DBG_IOCTL                   (0x00000010)
+#define OBJ_DBG_UPDATE                  (0x00000020)
 #define OBJ_DBG_SET                     (0x00000040)
 #define OBJ_DBG_GET                     (0x00000080)
 
@@ -38,8 +48,9 @@
 #define obj_dbg_flow(fmt, ...)          obj_dbg(OBJ_DBG_FLOW, fmt, ## __VA_ARGS__)
 #define obj_dbg_share(fmt, ...)         obj_dbg(OBJ_DBG_SHARE, fmt, ## __VA_ARGS__)
 #define obj_dbg_entry(fmt, ...)         obj_dbg(OBJ_DBG_ENTRY, fmt, ## __VA_ARGS__)
-#define obj_dbg_hook(fmt, ...)          obj_dbg(OBJ_DBG_HOOK, fmt, ## __VA_ARGS__)
+#define obj_dbg_pool(fmt, ...)          obj_dbg(OBJ_DBG_POOL, fmt, ## __VA_ARGS__)
 #define obj_dbg_ioctl(fmt, ...)         obj_dbg(OBJ_DBG_IOCTL, fmt, ## __VA_ARGS__)
+#define obj_dbg_update(fmt, ...)        obj_dbg(OBJ_DBG_UPDATE, fmt, ## __VA_ARGS__)
 #define obj_dbg_set(fmt, ...)           obj_dbg(OBJ_DBG_SET, fmt, ## __VA_ARGS__)
 #define obj_dbg_get(fmt, ...)           obj_dbg(OBJ_DBG_GET, fmt, ## __VA_ARGS__)
 
@@ -57,18 +68,27 @@
 #define ENTRY_TO_shm_PTR(tbl, entry)    ((void *)ENTRY_TO_PTR(tbl, entry))
 
 /* 32bit unsigned long pointer */
-#define ELEM_FLAG_U32_POS(offset)      (((offset) & (~31)) / 8)
-#define ELEM_FLAG_BIT_POS(offset)      ((offset) & 31)
-#define ENTRY_TO_FLAG_PTR(tbl, entry)   ((rk_ul *)((rk_u8 *)entry + ELEM_FLAG_U32_POS(tbl->tbl.flag_offset)))
+#define ELEM_FLAG_U32_POS(offset)       (((offset) & (~31)) / 8)
+#define ELEM_FLAG_BIT_POS(offset)       ((offset) & 31)
+#define ENTRY_TO_FLAG_PTR(e, entry)     ((rk_ul *)((rk_u8 *)entry + ELEM_FLAG_U32_POS(e->tbl.flag_offset)))
 
-#define ENTRY_SET_FLAG(tbl, entry) \
-    *ENTRY_TO_FLAG_PTR(tbl, entry) |= 1ul << (ELEM_FLAG_BIT_POS(tbl->tbl.flag_offset))
+#define ENTRY_SET_FLAG(e, entry) \
+    *ENTRY_TO_FLAG_PTR(e, entry) |= 1ul << (ELEM_FLAG_BIT_POS(e->tbl.flag_offset))
 
-#define ENTRY_CLR_FLAG(tbl, entry) \
-    *ENTRY_TO_FLAG_PTR(tbl, entry) &= ~(1ul << (ELEM_FLAG_BIT_POS(tbl->tbl.flag_offset)))
+#define ENTRY_CLR_FLAG(e, entry) \
+    *ENTRY_TO_FLAG_PTR(e, entry) &= ~(1ul << (ELEM_FLAG_BIT_POS(e->tbl.flag_offset)))
 
-#define ENTRY_TEST_FLAG(tbl, entry) \
-    (*ENTRY_TO_FLAG_PTR(tbl, entry) & 1ul << (ELEM_FLAG_BIT_POS(tbl->tbl.flag_offset))) ? 1 : 0
+#define ENTRY_TEST_FLAG(e, entry) \
+    (*ENTRY_TO_FLAG_PTR(e, entry) & 1ul << (ELEM_FLAG_BIT_POS(e->tbl.flag_offset))) ? 1 : 0
+
+typedef struct KmppShmReq_t {
+    /* shm_name     - NULL name addresss for shm direct allocation */
+    __u64           shm_name;
+    /* shm_size     - share memory size for shm direct allocation */
+    __u32           shm_size;
+    /* shm_flag     - share memory allocation flags */
+    __u32           shm_flag;
+} KmppShmReq;
 
 /* kernel object share memory get / put ioctl data */
 typedef struct KmppObjIocArg_t {
@@ -90,14 +110,43 @@ typedef struct KmppObjIocArg_t {
         __u64       name_uaddr[0];
         /* ioctl object userspace / kernel address */
         KmppShmPtr  obj_sptr[0];
+        KmppShmReq  shm_req[0];
     };
 } KmppObjIocArg;
 
 typedef struct KmppObjDefImpl_t {
+    /* userspace objdef */
+    MppCfgObj cfg;
+    MppMemPool pool;
+    /* object define from kernel or userspace */
+    rk_s32 is_kobj;
+    KmppObjInit init;
+    KmppObjDeinit deinit;
+    KmppObjPreset preset;
+    KmppObjDump dump;
+
+    /* comment data of userspace / kernel objdef */
     MppTrie trie;
+    MppTrie ioctl;
+    /* objdef index in kernel (/dev/kmpp_objs) */
     rk_s32 index;
+    /* objdef set index in objdefset for ioctl */
+    rk_s32 defs_idx;
     rk_s32 ref_cnt;
+    /* private data size for priv in KmppObjImpl */
+    rk_s32 priv_size;
+    /* entry size for entry in KmppObjImpl */
     rk_s32 entry_size;
+    rk_s32 flag_max_pos;
+    rk_s32 flag_offset;
+    /* entry size + flag size for entry in KmppObjImpl */
+    rk_s32 buf_size;
+    /* all size for sizeof(KmppObjImpl) + priv_size + entry_size + flag_size */
+    rk_s32 all_size;
+
+    /* properties */
+    rk_s32 disable_mismatch_log;
+
     const char *name;
 } KmppObjDefImpl;
 
@@ -107,20 +156,24 @@ typedef struct KmppObjImpl_t {
     KmppObjDefImpl *def;
     /* trie for fast access */
     MppTrie trie;
-    /* malloc flag */
-    rk_u32 need_free;
+    void *priv;
     KmppShmPtr *shm;
     void *entry;
 } KmppObjImpl;
 
-typedef struct KmppObjs_t {
+typedef struct KmppKtrieInfo_t {
     rk_s32              fd;
+    MppTrie             trie;
+    void                *root;
+} KmppKtrieInfo;
+
+typedef struct KmppObjs_t {
+    KmppKtrieInfo       obj;
+    KmppKtrieInfo       ioc;
     rk_s32              count;
     rk_s32              entry_offset;
     rk_s32              priv_offset;
     rk_s32              name_offset;
-    MppTrie             trie;
-    void                *root;
     KmppObjDefImpl      defs[0];
 } KmppObjs;
 
@@ -141,13 +194,14 @@ static KmppObjs *objs = NULL;
 
 #define get_objs_f() get_objs(__FUNCTION__)
 
-const char *strof_entry_type(EntryType type)
+const char *strof_elem_type(ElemType type)
 {
     static const char *ELEM_TYPE_names[] = {
         [ELEM_TYPE_s32]    = "s32",
         [ELEM_TYPE_u32]    = "u32",
         [ELEM_TYPE_s64]    = "s64",
         [ELEM_TYPE_u64]    = "u64",
+        [ELEM_TYPE_ptr]    = "ptr",
         [ELEM_TYPE_st]     = "struct",
         [ELEM_TYPE_shm]    = "shm_ptr",
         [ELEM_TYPE_kobj]   = "kobj",
@@ -176,7 +230,7 @@ const char *strof_entry_type(EntryType type)
         } else { \
             if (old != val) { \
                 obj_dbg_set("%p + %x set " #type " update " #log_str " -> " #log_str " flag %d\n", \
-                                entry, tbl->tbl.elem_offset, old, val, tbl->tbl.flag_offset); \
+                            entry, tbl->tbl.elem_offset, old, val, tbl->tbl.flag_offset); \
                 ENTRY_SET_FLAG(tbl, entry); \
             } else { \
                 obj_dbg_set("%p + %x set " #type " keep   " #log_str "\n", entry, tbl->tbl.elem_offset, old); \
@@ -216,7 +270,7 @@ MPP_OBJ_ACCESS_IMPL(fp, void *, % p)
         /* copy with flag check and updata */ \
         if (memcmp(dst, val, tbl->tbl.elem_size)) { \
             obj_dbg_set("%p + %x set " #type " size %d update %p -> %p flag %d\n", \
-                            entry, tbl->tbl.elem_offset, tbl->tbl.elem_size, dst, val, tbl->tbl.flag_offset); \
+                        entry, tbl->tbl.elem_offset, tbl->tbl.elem_size, dst, val, tbl->tbl.flag_offset); \
             memcpy(dst, val, tbl->tbl.elem_size); \
             ENTRY_SET_FLAG(tbl, entry); \
         } else { \
@@ -238,8 +292,66 @@ MPP_OBJ_ACCESS_IMPL(fp, void *, % p)
 MPP_OBJ_STRUCT_ACCESS_IMPL(st, void, % p)
 MPP_OBJ_STRUCT_ACCESS_IMPL(shm, KmppShmPtr, % p)
 
-__attribute__ ((destructor))
-void kmpp_objs_deinit(void)
+static rk_s32 kmpp_ktrie_get(KmppKtrieInfo *info, const char *path, rk_ul cmd)
+{
+    rk_s32 fd = open(path, O_RDWR);
+    MppTrie trie = NULL;
+    rk_u64 uaddr = 0;
+    void *root;
+    rk_s32 ret;
+
+    info->fd = fd;
+    info->trie = NULL;
+    info->root = NULL;
+
+    if (fd < 0) {
+        obj_dbg_flow("%s open failed ret fd %d\n", path, fd);
+        return rk_nok;
+    }
+
+    ret = ioctl(fd, cmd, &uaddr);
+    if (ret < 0) {
+        obj_dbg_flow("%s ioctl failed ret %d\n", path, ret);
+        goto __ret;
+    }
+
+    root = (void *)(intptr_t)uaddr;
+    obj_dbg_share("query fd %d root %p from kernel\n", fd, root);
+
+    ret = mpp_trie_init_by_root(&trie, root);
+    if (ret || !trie) {
+        mpp_loge_f("init trie by root failed ret %d\n", ret);
+        goto __ret;
+    }
+
+    if (kmpp_obj_debug & OBJ_DBG_SHARE)
+        mpp_trie_dump_f(trie);
+
+    info->trie = trie;
+    info->root = root;
+
+__ret:
+    return rk_ok;
+}
+
+rk_s32 kmpp_ktrie_put(KmppKtrieInfo *info)
+{
+    if (info->fd >= 0) {
+        close(info->fd);
+        info->fd = -1;
+    }
+
+    if (info->trie) {
+        mpp_trie_deinit(info->trie);
+        info->trie = NULL;
+    }
+
+    info->root = NULL;
+
+    return rk_ok;
+}
+
+static void kmpp_objs_deinit(void)
 {
     KmppObjs *p = MPP_FETCH_AND(&objs, NULL);
 
@@ -251,35 +363,39 @@ void kmpp_objs_deinit(void)
         for (i = 0; i < p->count; i++) {
             KmppObjDefImpl *impl = &p->defs[i];
 
+            if (impl->pool) {
+                mpp_mem_pool_deinit_f(impl->pool);
+                impl->pool = NULL;
+            }
+
             if (impl->trie) {
                 mpp_trie_deinit(impl->trie);
                 impl->trie = NULL;
             }
+
+            if (impl->ioctl) {
+                mpp_trie_deinit(impl->ioctl);
+                impl->ioctl = NULL;
+            }
         }
 
-        if (p->trie) {
-            mpp_trie_deinit(p->trie);
-            p->trie = NULL;
-        }
-
-        if (p->fd > 0) {
-            close(p->fd);
-            p->fd = -1;
-        }
+        kmpp_ktrie_put(&p->obj);
+        kmpp_ktrie_put(&p->ioc);
 
         mpp_free(p);
     }
 }
 
-__attribute__ ((constructor))
-void kmpp_objs_init(void)
+static void kmpp_objs_init(void)
 {
-    static const char *dev = "/dev/kmpp_objs";
+    static const char *dev_obj = "/dev/kmpp_objs";
+    static const char *dev_ioc = "/dev/kmpp_ioctl";
     KmppObjs *p = objs;
+    KmppKtrieInfo obj;
+    KmppKtrieInfo ioc;
     void *root = NULL;
     MppTrie trie = NULL;
     MppTrieInfo *info;
-    rk_s32 fd = -1;
     rk_s32 offset;
     rk_s32 count;
     rk_s32 ret;
@@ -293,34 +409,15 @@ void kmpp_objs_init(void)
 
     mpp_env_get_u32("kmpp_obj_debug", &kmpp_obj_debug, 0);
 
-    fd = open(dev, O_RDWR);
-    if (fd < 0) {
-        obj_dbg_flow("%s open failed ret fd %d\n", dev, fd);
+    /* skip kmpp_ioctls failure and call ioc init first to avoid deinit crash */
+    kmpp_ktrie_get(&ioc, dev_ioc, KMPP_IOCTL_IOC_QUERY_INFO);
+
+    ret = kmpp_ktrie_get(&obj, dev_obj, KMPP_SHM_IOC_QUERY_INFO);
+    if (ret < 0)
         goto __failed;
-    }
 
-    {
-        rk_u64 uaddr = 0;
-
-        ret = ioctl(fd, KMPP_SHM_IOC_QUERY_INFO, &uaddr);
-        if (ret < 0) {
-            mpp_loge_f("%s ioctl failed ret %d\n", dev, ret);
-            goto __failed;
-        }
-
-        root = (void *)(intptr_t)uaddr;
-        obj_dbg_share("query fd %d root %p from kernel\n", fd, root);
-    }
-
-    ret = mpp_trie_init_by_root(&trie, root);
-    if (ret || !trie) {
-        mpp_loge_f("init trie by root failed ret %d\n", ret);
-        goto __failed;
-    }
-
-    if (kmpp_obj_debug & OBJ_DBG_SHARE)
-        mpp_trie_dump_f(trie);
-
+    trie = obj.trie;
+    root = obj.root;
     info = mpp_trie_get_info(trie, "__count");
     count = info ? *(rk_s32 *)mpp_trie_info_ctx(info) : 0;
 
@@ -330,10 +427,9 @@ void kmpp_objs_init(void)
         goto __failed;
     }
 
-    p->fd = fd;
+    p->obj = obj;
+    p->ioc = ioc;
     p->count = count;
-    p->trie = trie;
-    p->root = root;
 
     info = mpp_trie_get_info(trie, "__offset");
     offset = info ? *(rk_s32 *)mpp_trie_info_ctx(info) : 0;
@@ -367,13 +463,32 @@ void kmpp_objs_init(void)
 
         info_objdef = mpp_trie_get_info(trie_objdef, "__index");
         impl->index = info_objdef ? *(rk_s32 *)mpp_trie_info_ctx(info_objdef) : -1;
+        impl->defs_idx = info->index;
         info_objdef = mpp_trie_get_info(trie_objdef, "__size");
         impl->entry_size = info_objdef ? *(rk_s32 *)mpp_trie_info_ctx(info_objdef) : 0;
         impl->name = name;
+        impl->is_kobj = 1;
 
         info = mpp_trie_get_info_next(trie, info);
         obj_dbg_share("%2d:%2d - %s offset %d entry_size %d\n",
                       count, i, name, offset, impl->entry_size);
+
+        obj_dbg_flow("objdef %-16s in kernel  size %4d\n",
+                     name, impl->entry_size);
+
+        /* check ioctl functions */
+        if (ioc.root) {
+            MppTrieInfo *ioc_info = mpp_trie_get_info(ioc.trie, name);
+
+            if (ioc_info) {
+                rk_s32 ioc_offset = *(rk_s32 *)mpp_trie_info_ctx(ioc_info);
+
+                mpp_trie_init_by_root(&impl->ioctl, ioc.root + ioc_offset);
+                if (impl->ioctl)
+                    obj_dbg_flow("objdef %-16s in kernel  support ioctl %d\n",
+                                 name, mpp_trie_get_info_count(impl->ioctl));
+            }
+        }
     }
 
     objs = p;
@@ -381,15 +496,11 @@ void kmpp_objs_init(void)
     return;
 
 __failed:
-    if (fd > 0) {
-        close(fd);
-        fd = -1;
-    }
-    if (trie) {
-        mpp_trie_deinit(trie);
-        trie = NULL;
-    }
+    kmpp_ktrie_put(&obj);
+    kmpp_ktrie_put(&ioc);
 }
+
+MPP_SINGLETON(MPP_SGLN_KOBJ, kmpp_obj, kmpp_objs_init, kmpp_objs_deinit);
 
 rk_s32 kmpp_objdef_put(KmppObjDef def)
 {
@@ -397,14 +508,37 @@ rk_s32 kmpp_objdef_put(KmppObjDef def)
     rk_s32 ret = rk_nok;
 
     if (impl) {
-        impl->ref_cnt--;
+        rk_s32 release = 0;
 
-        if (!impl->ref_cnt) {
+        if (impl->is_kobj) {
+            impl->ref_cnt--;
+            if (!impl->ref_cnt)
+                release = 1;
+            else
+                mpp_loge_f("objdef %-16s non-zero ref_cnt %d\n",
+                           impl->name, impl->ref_cnt);
+        } else {
+            if (impl->cfg) {
+                mpp_cfg_put_all(impl->cfg);
+                impl->cfg = NULL;
+            }
+            release = 1;
+        }
+
+        if (release) {
+            if (impl->pool) {
+                mpp_mem_pool_deinit_f(impl->pool);
+                impl->pool = NULL;
+            }
+
             if (impl->trie) {
-                ret = mpp_trie_deinit(impl->trie);
+                mpp_trie_deinit(impl->trie);
                 impl->trie = NULL;
             }
         }
+
+        if (!impl->is_kobj)
+            mpp_free(impl);
 
         ret = rk_ok;
     }
@@ -412,7 +546,44 @@ rk_s32 kmpp_objdef_put(KmppObjDef def)
     return ret;
 }
 
-rk_s32 kmpp_objdef_get(KmppObjDef *def, const char *name)
+rk_s32 kmpp_objdef_register(KmppObjDef *def, rk_s32 priv_size, rk_s32 size, const char *name)
+{
+    KmppObjDefImpl *impl = NULL;
+    rk_s32 name_len;
+    rk_s32 name_buf_size;
+    char *buf;
+
+    if (!def || !name || size <= 0) {
+        mpp_loge_f("invalid param def %p size %d name %p\n", def, size, name);
+        return rk_nok;
+    }
+
+    *def = NULL;
+    name_len = strlen(name);
+    name_buf_size = MPP_ALIGN(name_len + 1, sizeof(rk_s32));
+    impl = mpp_calloc_size(KmppObjDefImpl, sizeof(KmppObjDefImpl) + name_buf_size);
+    if (!impl) {
+        mpp_loge_f("alloc objdef size %d failed\n", sizeof(KmppObjDefImpl) + name_buf_size);
+        return rk_nok;
+    }
+
+    buf = (char *)(impl + 1);
+    memcpy(buf, name, name_len);
+    buf[name_len] = '\0';
+    impl->name = buf;
+    impl->priv_size = MPP_ALIGN(priv_size, sizeof(void *));
+    impl->entry_size = size;
+    impl->buf_size = size + sizeof(KmppObjImpl);
+    impl->ref_cnt = 1;
+
+    obj_dbg_flow("objdef %-16s registered size %4d\n", name, size, impl);
+
+    *def = impl;
+
+    return rk_ok;
+}
+
+rk_s32 kmpp_objdef_find(KmppObjDef *def, const char *name)
 {
     KmppObjs *p = get_objs_f();
     MppTrieInfo *info = NULL;
@@ -427,23 +598,202 @@ rk_s32 kmpp_objdef_get(KmppObjDef *def, const char *name)
     if (!p)
         return rk_nok;
 
-    info = mpp_trie_get_info(p->trie, name);
+    info = mpp_trie_get_info(p->obj.trie, name);
     if (!info) {
-        mpp_loge_f("failed to get objdef %s\n", name);
+        obj_dbg_flow("objdef %-16s can not be found in kernel\n", name);
         return rk_nok;
     }
 
     if (p->count > 0 && info->index < (RK_U32)p->count) {
-        KmppObjDefImpl *impl = &p->defs[info->index];
-
-        impl->ref_cnt++;
-        *def = impl;
-
+        *def = &p->defs[info->index];
         return rk_ok;
     }
 
-    mpp_loge_f("failed to get objdef %s index %d max %d\n",
+    mpp_loge_f("objdef %-16s is found but with invalid index %d max %d\n",
                name, info->index, p->count);
+
+    return rk_nok;
+}
+
+static rk_s32 create_objdef_mem_pool(KmppObjDefImpl *impl)
+{
+    rk_s32 old_size = impl->all_size;
+
+    /* When last entry finish update and create memory pool */
+    if (impl->flag_max_pos) {
+        rk_s32 flag_max_pos = MPP_ALIGN(impl->flag_max_pos, 8);
+        rk_s32 flag_size = flag_max_pos / 8;
+
+        impl->flag_offset = impl->entry_size;
+        impl->flag_max_pos = flag_max_pos;
+
+        flag_size -= impl->entry_size;
+        flag_size = MPP_ALIGN(flag_size, 4);
+
+        impl->buf_size = impl->entry_size + flag_size;
+    }
+
+    impl->all_size = sizeof(KmppObjImpl) + impl->priv_size + impl->buf_size;
+
+    obj_dbg_pool("objdef %-16s entry size %4d buf size %4d -> %4d\n", impl->name,
+                 impl->entry_size, old_size, impl->all_size);
+
+    impl->pool = mpp_mem_pool_init_f(impl->name, impl->all_size);
+    if (!impl->pool)
+        mpp_loge_f("get mem pool size %d failed\n", impl->all_size);
+
+    return impl->pool ? rk_ok : rk_nok;
+}
+
+rk_s32 kmpp_objdef_get(KmppObjDef *def, rk_s32 priv_size, const char *name)
+{
+    KmppObjDefImpl *impl = NULL;
+
+    if (!def || !name) {
+        mpp_loge_f("invalid param def %p name %p\n", def, name);
+        return rk_nok;
+    }
+
+    if (kmpp_objdef_find((KmppObjDef *)&impl, name)) {
+        *def = NULL;
+        return rk_nok;
+    }
+
+    mpp_assert(impl);
+    impl->priv_size = priv_size;
+    create_objdef_mem_pool(impl);
+    if (impl->ref_cnt)
+        mpp_logw_f("objdef %-16s already get ref %d\n", name, impl->ref_cnt);
+    else
+        impl->ref_cnt++;
+
+    *def = impl;
+
+    return rk_ok;
+}
+
+rk_s32 kmpp_objdef_add_cfg_root(KmppObjDef def, MppCfgObj root)
+{
+    KmppObjDefImpl *impl = (KmppObjDefImpl *)def;
+    rk_s32 ret = rk_nok;
+
+    if (impl) {
+        impl->cfg = root;
+        ret = rk_ok;
+    }
+
+    return ret;
+}
+
+MppCfgObj kmpp_objdef_get_cfg_root(KmppObjDef def)
+{
+    KmppObjDefImpl *impl = (KmppObjDefImpl *)def;
+
+    return impl ? impl->cfg : NULL;
+}
+
+rk_s32 kmpp_objdef_add_entry(KmppObjDef def, const char *name, KmppEntry *tbl)
+{
+    KmppObjDefImpl *impl = (KmppObjDefImpl *)def;
+    rk_s32 ret = rk_nok;
+
+    if (!impl->trie) {
+        if (!name) {
+            /* NOTE: no entry objdef still need to create mempool */
+            return create_objdef_mem_pool(impl);
+        }
+
+        mpp_trie_init(&impl->trie, impl->name);
+    }
+
+    if (impl->trie) {
+        MppTrie trie = impl->trie;
+
+        if (name) {
+            ret = mpp_trie_add_info(trie, name, tbl, tbl ? sizeof(*tbl) : 0);
+
+            if (tbl->tbl.flag_offset > impl->flag_max_pos)
+                impl->flag_max_pos = tbl->tbl.flag_offset;
+
+            obj_dbg_entry("objdef %-16s add entry %-16s flag offset %4d\n",
+                          impl->name, name, tbl->tbl.flag_offset);
+        } else {
+            /* record object impl size */
+            ret = mpp_trie_add_info(trie, "__index", &impl->index, sizeof(rk_s32));
+            ret = mpp_trie_add_info(trie, "__size", &impl->entry_size, sizeof(rk_s32));
+            ret |= mpp_trie_add_info(trie, NULL, NULL, 0);
+            ret |= create_objdef_mem_pool(impl);
+        }
+    }
+
+    if (ret)
+        mpp_loge("objdef %s add entry %s failed ret %d\n", impl ? impl->name : NULL, name, ret);
+
+    return ret;
+}
+
+rk_s32 kmpp_objdef_add_init(KmppObjDef def, KmppObjInit init)
+{
+    if (def) {
+        KmppObjDefImpl *impl = (KmppObjDefImpl *)def;
+
+        impl->init = init;
+        return rk_ok;
+    }
+
+    return rk_nok;
+}
+
+rk_s32 kmpp_objdef_add_deinit(KmppObjDef def, KmppObjDeinit deinit)
+{
+    if (def) {
+        KmppObjDefImpl *impl = (KmppObjDefImpl *)def;
+
+        impl->deinit = deinit;
+        return rk_ok;
+    }
+
+    return rk_nok;
+}
+
+rk_s32 kmpp_objdef_add_preset(KmppObjDef def, KmppObjPreset preset)
+{
+    if (def) {
+        KmppObjDefImpl *impl = (KmppObjDefImpl *)def;
+
+        impl->preset = preset;
+        return rk_ok;
+    }
+
+    return rk_nok;
+}
+
+rk_s32 kmpp_objdef_add_dump(KmppObjDef def, KmppObjDump dump)
+{
+    if (def) {
+        KmppObjDefImpl *impl = (KmppObjDefImpl *)def;
+
+        impl->dump = dump;
+        return rk_ok;
+    }
+
+    return rk_nok;
+}
+
+rk_s32 kmpp_objdef_set_prop(KmppObjDef def, const char *op, rk_s32 value)
+{
+    if (def && op) {
+        KmppObjDefImpl *impl = (KmppObjDefImpl *)def;
+
+        if (!strcmp(op, "disable_mismatch_log")) {
+            impl->disable_mismatch_log = value ? 1 : 0;
+        } else {
+            mpp_loge_f("unknown property %s value %d\n", op, value);
+            return rk_nok;
+        }
+
+        return rk_ok;
+    }
 
     return rk_nok;
 }
@@ -462,7 +812,7 @@ rk_s32 kmpp_objdef_get_entry(KmppObjDef def, const char *name, KmppEntry **tbl)
         }
     }
 
-    if (ret)
+    if (ret && !impl->disable_mismatch_log)
         mpp_loge("objdef %s get entry %s failed ret %d\n",
                  impl ? impl->name : NULL, name, ret);
 
@@ -486,6 +836,20 @@ rk_s32 kmpp_objdef_get_offset(KmppObjDef def, const char *name)
     }
 
     return offset;
+}
+
+rk_s32 kmpp_objdef_get_cmd(KmppObjDef def, const char *name)
+{
+    KmppObjDefImpl *impl = (KmppObjDefImpl *)def;
+
+    if (impl->ioctl) {
+        MppTrieInfo *info = mpp_trie_get_info(impl->ioctl, name);
+
+        if (info)
+            return info->index;
+    }
+
+    return -1;
 }
 
 rk_s32 kmpp_objdef_dump(KmppObjDef def)
@@ -557,10 +921,59 @@ MppTrie kmpp_objdef_get_trie(KmppObjDef def)
     return impl ? impl->trie : NULL;
 }
 
+#define get_obj_from_def(p, def, shm, caller) \
+    _get_obj_from_def(p, def, shm, caller, __FUNCTION__)
+
+static KmppObjImpl *_get_obj_from_def(KmppObjs *p, KmppObjDefImpl *def, KmppShmPtr *shm,
+                                      const char *caller, const char *func)
+{
+    KmppObjImpl *impl = mpp_mem_pool_get(def->pool, caller);
+    rk_u8 *base;
+
+    if (!impl) {
+        mpp_loge("%s get obj %s impl %d failed at %s\n",
+                 func, def->name, def->all_size, caller);
+        return NULL;
+    }
+
+    base = (rk_u8 *)(impl + 1);
+    impl->name = def->name;
+    impl->def = def;
+    impl->trie = def->trie;
+
+    if (def->priv_size) {
+        impl->priv = base;
+        base += def->priv_size;
+    } else {
+        impl->priv = NULL;
+    }
+
+    if (shm && p) {
+        impl->shm = shm;
+        impl->entry = (void *)(shm->uptr + p->entry_offset);
+
+        /* write userspace object address to share memory userspace private value */
+        *(RK_U64 *)(shm->uptr + p->priv_offset) = (RK_U64)(intptr_t)impl;
+
+        obj_dbg_flow("%s get kobj %-16s - %p entry [u:k] %llx:%llx at %s\n", func,
+                     def->name, impl, shm->uaddr, shm->kaddr, caller);
+    } else {
+        impl->shm = NULL;
+        impl->entry = base;
+
+        obj_dbg_flow("%s get uobj %-16s - %p entry %p at %s\n", func,
+                     def->name, impl, base, caller);
+    }
+
+    if (def->init)
+        def->init(impl->entry, impl, caller);
+
+    return impl;
+}
+
 rk_s32 kmpp_obj_get(KmppObj *obj, KmppObjDef def, const char *caller)
 {
-    KmppObjs *p = get_objs(caller);
-    KmppObjImpl *impl;
+    KmppObjs *p;
     KmppObjDefImpl *def_impl;
     KmppObjIocArg *ioc;
     rk_u64 uaddr;
@@ -573,15 +986,25 @@ rk_s32 kmpp_obj_get(KmppObj *obj, KmppObjDef def, const char *caller)
 
     *obj = NULL;
 
-    if (!p)
-        return ret;
-
     def_impl = (KmppObjDefImpl *)def;
-    impl = mpp_calloc(KmppObjImpl, 1);
-    if (!impl) {
-        mpp_loge_f("malloc obj impl %d failed at %s\n", sizeof(KmppObjImpl), caller);
+
+    /* use buf_size to check userspace objdef or kernel objdef */
+    if (!def_impl->pool) {
+        mpp_loge_f("invalid objdef %s without pool at %s\n", def_impl->name, caller);
         return ret;
     }
+
+    /* userspace objdef path */
+    if (!def_impl->is_kobj) {
+        *obj = get_obj_from_def(NULL, def_impl, NULL, caller);
+
+        return *obj ? rk_ok : rk_nok;
+    }
+
+    /* kernel objdef path */
+    p = get_objs(caller);
+    if (!p)
+        return ret;
 
     ioc = alloca(sizeof(KmppObjIocArg) + sizeof(KmppShmPtr));
 
@@ -589,66 +1012,40 @@ rk_s32 kmpp_obj_get(KmppObj *obj, KmppObjDef def, const char *caller)
     ioc->flag = 0;
     ioc->name_uaddr[0] = (__u64)(intptr_t)def_impl->name;
 
-    ret = ioctl(p->fd, KMPP_SHM_IOC_GET_SHM, ioc);
+    ret = ioctl(p->obj.fd, KMPP_SHM_IOC_GET_SHM, ioc);
     if (ret) {
         mpp_err("%s fd %d ioctl KMPP_SHM_IOC_GET_SHM failed at %s\n",
-                def_impl->name, p->fd, caller);
-        mpp_free(impl);
+                def_impl->name, p->obj.fd, caller);
         return ret;
     }
 
     uaddr = ioc->obj_sptr[0].uaddr;
-    impl->name = def_impl->name;
-    impl->def = def;
-    impl->trie = def_impl->trie;
-    impl->need_free = 1;
-    impl->shm = U64_TO_PTR(uaddr);
-    impl->entry = U64_TO_PTR(uaddr + p->entry_offset);
 
-    obj_dbg_flow("get obj %s - %p entry [u:k] %llx:%llx at %s\n", def_impl->name,
-                 impl, uaddr, ioc->obj_sptr[0].kaddr, caller);
+    *obj = get_obj_from_def(p, def_impl, (KmppShmPtr *)U64_TO_PTR(uaddr), caller);
 
-    /* write userspace object address to share memory userspace private value */
-    *(RK_U64 *)U64_TO_PTR(uaddr + p->priv_offset) = (RK_U64)(intptr_t)impl;
-
-    *obj = impl;
-
-    return rk_ok;
+    return *obj ? rk_ok : rk_nok;
 }
 
 rk_s32 kmpp_obj_get_by_name(KmppObj *obj, const char *name, const char *caller)
 {
-    KmppObjs *p = get_objs(caller);
-    MppTrieInfo *info = NULL;
+    KmppObjDefImpl *def;
 
     if (!obj || !name) {
-        mpp_loge_f("invalid param obj %p name %p objs %p at %s\n",
-                   obj, name, p, caller);
+        mpp_loge_f("invalid param obj %p name %p at %s\n",
+                   obj, name, caller);
         return rk_nok;
     }
 
-    *obj = NULL;
-
-    if (!p)
-        return rk_nok;
-
-    info = mpp_trie_get_info(p->trie, name);
-    if (!info) {
-        mpp_loge_f("failed to get objdef %s at %s\n", name, caller);
+    if (kmpp_objdef_find((KmppObjDef *)&def, name)) {
+        *obj = NULL;
         return rk_nok;
     }
 
-    if (p->count > 0 && info->index < (RK_U32)p->count) {
-        KmppObjDefImpl *impl = &p->defs[info->index];
+    mpp_assert(def);
+    if (def->is_kobj && !def->pool)
+        create_objdef_mem_pool(def);
 
-        /* NOTE: do NOT increase ref_cnt here */
-        return kmpp_obj_get(obj, impl, caller);
-    }
-
-    mpp_loge_f("failed to get objdef %s index %d max %d at %s\n",
-               name, info->index, p->count, caller);
-
-    return rk_nok;
+    return kmpp_obj_get(obj, def, caller);
 }
 
 rk_s32 kmpp_obj_get_by_sptr(KmppObj *obj, KmppShmPtr *sptr, const char *caller)
@@ -657,18 +1054,27 @@ rk_s32 kmpp_obj_get_by_sptr(KmppObj *obj, KmppShmPtr *sptr, const char *caller)
     KmppObjImpl *impl;
     KmppObjDefImpl *def;
     rk_u8 *uptr = sptr ? sptr->uptr : NULL;
-    rk_s32 ret = rk_nok;
 
-    if (!obj || !sptr || !uptr) {
+    if (!obj) {
         mpp_loge_f("invalid param obj %p sptr %p uptr %p at %s\n",
                    obj, sptr, uptr, caller);
-        return ret;
+        return rk_nok;
     }
 
     *obj = NULL;
 
+    /* allow NULL sptr and NULL uptr return NULL object value without error */
+    if (!sptr || !uptr)
+        return rk_ok;
+
     if (!p)
-        return ret;
+        return rk_nok;
+
+    impl = (KmppObjImpl *)(intptr_t) * (rk_u64 *)(uptr + p->priv_offset);
+    if (impl) {
+        if (!kmpp_obj_check_f((KmppObj)impl))
+            goto done;
+    }
 
     {
         rk_u32 val = *((rk_u32 *)(uptr + p->name_offset));
@@ -676,73 +1082,103 @@ rk_s32 kmpp_obj_get_by_sptr(KmppObj *obj, KmppShmPtr *sptr, const char *caller)
 
         if (!val) {
             mpp_loge_f("invalid obj name offset %d at %s\n", val, caller);
-            return ret;
+            return rk_nok;
         }
 
-        str = (char *)p->root + val;
-        kmpp_objdef_get((KmppObjDef *)&def, str);
-        if (!def) {
+        str = (char *)p->obj.root + val;
+        if (kmpp_objdef_find((KmppObjDef *)&def, str)) {
             mpp_loge_f("failed to get objdef %p - %s at %s\n", str, str, caller);
-            return ret;
+            return rk_nok;
         }
     }
 
-    impl = mpp_calloc(KmppObjImpl, 1);
-    if (!impl) {
-        mpp_loge_f("malloc obj impl %d failed at %s\n", sizeof(KmppObjImpl), caller);
-        return ret;
-    }
+    mpp_assert(def && def->pool);
+    impl = get_obj_from_def(p, def, (KmppShmPtr *)uptr, caller);
 
-    impl->name = def->name;
-    impl->def = def;
-    impl->trie = def->trie;
-    impl->need_free = 1;
-    impl->shm = (KmppShmPtr *)uptr;
-    impl->entry = uptr + p->entry_offset;
-
-    obj_dbg_flow("get obj %s - %p by sptr [u:k] %llx:%llx at %s\n", def->name,
-                 impl, sptr->uaddr, sptr->kaddr, caller);
-
-    /* write userspace object address to share memory userspace private value */
-    *(RK_U64 *)U64_TO_PTR(sptr->uaddr + p->priv_offset) = (RK_U64)(intptr_t)impl;
-
+done:
     *obj = impl;
 
-    return rk_ok;
+    return impl ? rk_ok : rk_nok;
 }
 
 rk_s32 kmpp_obj_put(KmppObj obj, const char *caller)
 {
     if (obj) {
-        KmppObjs *p = get_objs(caller);
         KmppObjImpl *impl = (KmppObjImpl *)obj;
+        KmppObjDefImpl *def = impl->def;
+        KmppObjs *p;
 
-        if (impl->shm && p && p->fd >= 0) {
-            KmppObjIocArg *ioc = alloca(sizeof(KmppObjIocArg) + sizeof(KmppShmPtr));
-            KmppObjDefImpl *def = impl->def;
-            rk_s32 ret;
+        mpp_assert(def && def->pool);
 
-            ioc->count = 1;
-            ioc->flag = 0;
-            ioc->obj_sptr[0].uaddr = impl->shm->uaddr;
-            ioc->obj_sptr[0].kaddr = impl->shm->kaddr;
+        if (def && def->deinit)
+            def->deinit(impl->entry, impl, caller);
 
-            obj_dbg_flow("put obj %s - %p entry [u:k] %llx:%llx at %s\n", def ? def->name : NULL,
-                         impl, impl->shm->uaddr, impl->shm->kaddr, caller);
+        /* use shm to check userspace objdef or kernel objdef */
+        /* userspace objdef path */
+        if (impl->shm) {
+            p = get_objs(caller);
+            if (p && p->obj.fd >= 0) {
+                KmppObjIocArg *ioc = alloca(sizeof(KmppObjIocArg) + sizeof(KmppShmPtr));
+                rk_s32 ret;
 
-            ret = ioctl(p->fd, KMPP_SHM_IOC_PUT_SHM, ioc);
-            if (ret)
-                mpp_err("ioctl KMPP_SHM_IOC_PUT_SHM failed ret %d at %s\n", ret, caller);
+                ioc->count = 1;
+                ioc->flag = 0;
+                ioc->obj_sptr[0].uaddr = impl->shm->uaddr;
+                ioc->obj_sptr[0].kaddr = impl->shm->kaddr;
+
+                obj_dbg_flow("put obj %-16s - %p entry [u:k] %llx:%llx at %s\n", def ? def->name : NULL,
+                             impl, impl->shm->uaddr, impl->shm->kaddr, caller);
+
+                ret = ioctl(p->obj.fd, KMPP_SHM_IOC_PUT_SHM, ioc);
+                if (ret)
+                    mpp_err("ioctl KMPP_SHM_IOC_PUT_SHM failed ret %d at %s\n", ret, caller);
+            }
+            impl->shm = NULL;
         }
-        impl->shm = NULL;
 
-        if (impl->need_free)
-            mpp_free(impl);
+        mpp_mem_pool_put(def->pool, impl, caller);
 
         return rk_ok;
     }
 
     return rk_nok;
+}
+
+rk_s32 kmpp_obj_impl_put(KmppObj obj, const char *caller)
+{
+    if (obj) {
+        KmppObjImpl *impl = (KmppObjImpl *)obj;
+        KmppObjDefImpl *def = impl->def;
+
+        mpp_assert(def);
+
+        if (def) {
+            if (def->deinit)
+                def->deinit(impl->entry, impl, caller);
+
+            mpp_assert(def->pool);
+            mpp_mem_pool_put(def->pool, impl, caller);
+
+            return rk_ok;
+        }
+    }
+
+    return rk_nok;
+}
+
+rk_s32 kmpp_obj_preset(KmppObj obj, const char *arg, const char *caller)
+{
+    if (obj) {
+        KmppObjImpl *impl = (KmppObjImpl *)obj;
+        KmppObjDefImpl *def = impl->def;
+
+        mpp_assert(def);
+
+        if (def && def->preset)
+            return def->preset(impl->entry, impl, arg, caller);
+    }
+
+    return rk_ok;
 }
 
 rk_s32 kmpp_obj_check(KmppObj obj, const char *caller)
@@ -760,26 +1196,53 @@ rk_s32 kmpp_obj_check(KmppObj obj, const char *caller)
         return rk_nok;
     }
 
-    return rk_ok;
-}
-
-rk_s32 kmpp_obj_ioctl(KmppObj obj, rk_s32 cmd, KmppObj in, KmppObj out, const char *caller)
-{
-    KmppObjIocArg *ioc_arg;
-    KmppObjImpl *ioc = NULL;
-    KmppObjImpl *impl = (KmppObjImpl *)obj;
-    rk_s32 ret;
-    rk_s32 fd;
-
-    ret = kmpp_obj_get_by_name((KmppObj *)&ioc, "KmppIoc", caller);
-    if (ret) {
-        mpp_loge("failed to get KmppIoc ret %d\n", ret);
+    if (!impl->entry || !impl->def->trie) {
+        mpp_loge_f("from %s failed for entry %p and def trie %p\n", caller,
+                   impl->entry, impl->def->trie);
         return rk_nok;
     }
 
-    fd = open("/dev/kmpp_ioctl", O_RDWR);
-    if (fd < 0) {
-        mpp_loge("failed to open /dev/kmpp_ioctl ret %d\n", fd);
+    return rk_ok;
+}
+
+rk_s32 kmpp_obj_ioctl(KmppObj ctx, rk_s32 cmd, KmppObj in, KmppObj *out, const char *caller)
+{
+    KmppObjs *p = get_objs_f();
+    KmppObjDef def_ioc = kmpp_ioc_objdef();
+    KmppObjImpl *impl = (KmppObjImpl *)ctx;
+    KmppObjImpl *ioc = NULL;
+    KmppObjIocArg *ioc_arg;
+    KmppObjDefImpl *def;
+    rk_s32 ret;
+
+    if (!p)
+        return rk_nok;
+
+    if (!def_ioc) {
+        static rk_s32 once = 1;
+
+        if (once) {
+            mpp_loge("KmppIoc is not defined\n");
+            once = 0;
+        }
+
+        return rk_nok;
+    }
+
+    if (!impl || !impl->def) {
+        mpp_err("invalid ioctl ctx %p def %p failed at %s\n",
+                impl, impl ? impl->def : NULL, caller);
+        return rk_nok;
+    }
+
+    def = impl->def;
+
+    obj_dbg_ioctl("ioctl def %s:%d cmd %d ctx %p in %p out %p at %s\n",
+                  def->name, def->defs_idx, cmd, ctx, in, out, caller);
+
+    ret = kmpp_obj_get((KmppObj *)&ioc, def_ioc, caller);
+    if (ret) {
+        mpp_loge("failed to get KmppIoc ret %d\n", ret);
         return rk_nok;
     }
 
@@ -792,35 +1255,92 @@ rk_s32 kmpp_obj_ioctl(KmppObj obj, rk_s32 cmd, KmppObj in, KmppObj out, const ch
     obj_dbg_ioctl("ioctl arg %p obj_sptr [u:k] %llx : %llx\n", ioc_arg,
                   ioc_arg->obj_sptr[0].uaddr, ioc_arg->obj_sptr[0].kaddr);
 
-    obj_dbg_ioctl("ioctl def %s - %d cmd %d\n", impl->def->name, impl->def->index, cmd);
+    kmpp_ioc_set_def(ioc, def->defs_idx);
+    kmpp_ioc_set_cmd(ioc, cmd);
+    kmpp_ioc_set_flags(ioc, 0);
+    kmpp_ioc_set_id(ioc, 0);
 
-    kmpp_obj_set_u32(ioc, "def", impl->def->index);
-    kmpp_obj_set_u32(ioc, "cmd", cmd);
-    kmpp_obj_set_u32(ioc, "flag", 0);
-    kmpp_obj_set_u32(ioc, "id", 0);
+    {
+        static rk_s32 has_ctx = -1;
+
+        if (has_ctx < 0)
+            has_ctx = kmpp_objdef_get_offset(def_ioc, "ctx") >= 0;
+
+        if (has_ctx) {
+            KmppShmPtr *sptr = kmpp_obj_to_shm(ctx);
+
+            kmpp_ioc_set_ctx(ioc, sptr);
+            obj_dbg_ioctl("ioctl [u:k] ctx %#llx : %#llx\n", sptr->uaddr, sptr->kaddr);
+        }
+    }
 
     if (in) {
-        KmppObjImpl *impl_in = (KmppObjImpl *)in;
+        KmppShmPtr *sptr = kmpp_obj_to_shm(in);
 
-        kmpp_obj_set_shm(ioc, "in", impl_in->shm);
-        obj_dbg_ioctl("ioctl [u:k] in %#llx : %#llx\n",
-                      impl_in->shm->uaddr, impl_in->shm->kaddr);
+        kmpp_ioc_set_in(ioc, sptr);
+        obj_dbg_ioctl("ioctl [u:k] in %#llx : %#llx\n", sptr->uaddr, sptr->kaddr);
     }
+
+    ret = ioctl(p->ioc.fd, 0, ioc_arg);
+
+    /* if defined ret in ioc object use ret in ioc object */
+    kmpp_ioc_get_ret(ioc, &ret);
+
     if (out) {
-        KmppObjImpl *impl_out = (KmppObjImpl *)out;
+        *out = NULL;
 
-        kmpp_obj_set_shm(ioc, "out", impl_out->shm);
-        obj_dbg_ioctl("ioctl [u:k] in %#llx : %#llx\n",
-                      impl_out->shm->uaddr, impl_out->shm->kaddr);
+        if (!ret) {
+            KmppShmPtr sptr = { 0 };
+
+            kmpp_ioc_get_out(ioc, &sptr);
+            kmpp_obj_get_by_sptr(out, &sptr, caller);
+
+            obj_dbg_ioctl("ioctl [u:k] out %#llx : %#llx obj %p\n",
+                          sptr.uaddr, sptr.kaddr, *out);
+        }
     }
-
-    ret = ioctl(fd, 0, ioc_arg);
 
     kmpp_obj_put(ioc, caller);
 
-    close(fd);
-
     return ret;
+}
+
+rk_s32 kmpp_obj_is_kobj(KmppObj obj)
+{
+    KmppObjImpl *impl = (KmppObjImpl *)obj;
+
+    return (impl && impl->def) ? impl->def->is_kobj : 0;
+}
+
+KmppObjDef kmpp_obj_to_objdef(KmppObj obj)
+{
+    KmppObjImpl *impl = (KmppObjImpl *)obj;
+
+    return impl ? impl->def : NULL;
+}
+
+void *kmpp_obj_to_flags(KmppObj obj)
+{
+    KmppObjImpl *impl = (KmppObjImpl *)obj;
+
+    if (impl && impl->def && impl->def->flag_offset)
+        return impl->entry + impl->def->flag_offset;
+
+    return NULL;
+}
+
+rk_s32 kmpp_obj_to_flags_size(KmppObj obj)
+{
+    KmppObjImpl *impl = (KmppObjImpl *)obj;
+
+    if (impl && impl->def && impl->def->flag_max_pos) {
+        KmppObjDefImpl *def = impl->def;
+        rk_s32 max_pos = MPP_ALIGN(def->flag_max_pos, 8) / 8;
+
+        return MPP_ALIGN(max_pos - def->flag_offset, 4);
+    }
+
+    return 0;
 }
 
 KmppShmPtr *kmpp_obj_to_shm(KmppObj obj)
@@ -849,6 +1369,13 @@ const char *kmpp_obj_get_name(KmppObj obj)
         return impl->def->name;
 
     return NULL;
+}
+
+void *kmpp_obj_to_priv(KmppObj obj)
+{
+    KmppObjImpl *impl = (KmppObjImpl *)obj;
+
+    return impl ? impl->priv : NULL;
 }
 
 void *kmpp_obj_to_entry(KmppObj obj)
@@ -922,8 +1449,58 @@ MPP_OBJ_ACCESS(u32, rk_u32)
 MPP_OBJ_ACCESS(s64, rk_s64)
 MPP_OBJ_ACCESS(u64, rk_u64)
 MPP_OBJ_ACCESS(obj, KmppObj)
-MPP_OBJ_ACCESS(ptr, void *)
 MPP_OBJ_ACCESS(fp, void *)
+
+/* compatible for pointer and structure setup */
+rk_s32 kmpp_obj_set_ptr(KmppObj obj, const char *name, void* val)
+{
+    KmppObjImpl *impl = (KmppObjImpl *)obj;
+    rk_s32 ret = rk_nok;
+
+    if (impl->trie) {
+        MppTrieInfo *info = mpp_trie_get_info(impl->trie, name);
+
+        if (info) {
+            KmppEntry *tbl = (KmppEntry *)mpp_trie_info_ctx(info);
+
+            if (tbl->tbl.elem_type == ELEM_TYPE_st)
+                ret = kmpp_obj_impl_set_st(tbl, impl->entry, val);
+            else
+                ret = kmpp_obj_impl_set_ptr(tbl, impl->entry, val);
+        }
+    }
+
+    if (ret)
+        mpp_loge("obj %s set %s ptr failed ret %d\n",
+                 (impl && impl->def && impl->def->name) ? impl->def->name : NULL, name, ret);
+
+    return ret;
+}
+
+rk_s32 kmpp_obj_get_ptr(KmppObj obj, const char *name, void **val)
+{
+    KmppObjImpl *impl = (KmppObjImpl *)obj;
+    rk_s32 ret = rk_nok;
+
+    if (impl->trie) {
+        MppTrieInfo *info = mpp_trie_get_info(impl->trie, name);
+
+        if (info) {
+            KmppEntry *tbl = (KmppEntry *)mpp_trie_info_ctx(info);
+
+            if (tbl->tbl.elem_type == ELEM_TYPE_st)
+                ret = kmpp_obj_impl_get_st(tbl, impl->entry, val);
+            else
+                ret = kmpp_obj_impl_get_ptr(tbl, impl->entry, val);
+        }
+    }
+
+    if (ret)
+        mpp_loge("obj %s get %s ptr failed ret %d\n",
+                 (impl && impl->def && impl->def->name) ? impl->def->name : NULL, name, ret);
+
+    return ret;
+}
 
 #define MPP_OBJ_STRUCT_ACCESS(type, base_type) \
     rk_s32 kmpp_obj_set_##type(KmppObj obj, const char *name, base_type *val) \
@@ -1089,6 +1666,114 @@ rk_s32 kmpp_obj_tbl_test(KmppObj obj, KmppEntry *tbl)
     return (impl && tbl) ? ENTRY_TEST_FLAG(tbl, impl->entry) : 0;
 }
 
+rk_s32 kmpp_obj_update(KmppObj dst, KmppObj src)
+{
+    KmppObjImpl *dst_impl = (KmppObjImpl *)dst;
+    KmppObjImpl *src_impl = (KmppObjImpl *)src;
+    MppTrie trie = NULL;
+    MppTrieInfo *info = NULL;
+
+    if (kmpp_obj_check_f(src) || kmpp_obj_check_f(dst) || src_impl->def != dst_impl->def) {
+        mpp_loge_f("obj %p update to %p failed invalid param\n", src, dst);
+        return rk_nok;
+    }
+
+    trie = src_impl->def->trie;
+
+    info = mpp_trie_get_info_first(trie);
+    do {
+        KmppEntry *e;
+
+        if (mpp_trie_info_is_self(info))
+            continue;
+
+        e = (KmppEntry *)mpp_trie_info_ctx(info);
+        if (e->tbl.flag_offset && ENTRY_TEST_FLAG(e, src_impl->entry)) {
+            rk_s32 offset = e->tbl.elem_offset;
+            rk_s32 size = e->tbl.elem_size;
+
+            obj_dbg_update("obj %s %p update %s\n", src_impl->name,
+                           dst, mpp_trie_info_name(info));
+            memcpy(dst_impl->entry + offset, src_impl->entry + offset, size);
+        }
+    } while ((info = mpp_trie_get_info_next(trie, info)));
+
+    if (src_impl->def) {
+        KmppObjDefImpl *def = src_impl->def;
+        rk_s32 flag_offset = def->flag_offset;
+        rk_s32 flag_size = kmpp_obj_to_flags_size(src);
+
+        if (flag_offset && flag_size) {
+            rk_s32 i;
+
+            for (i = flag_offset; i < flag_offset + flag_size; i += 4)
+                obj_dbg_update("obj %s %p update flag at %#06x - %08x\n", src_impl->def->name,
+                               dst, i, *((rk_u32 *)((rk_u8 *)src_impl->entry + i)));
+
+            memcpy(dst_impl->entry + flag_offset,
+                   src_impl->entry + flag_offset, flag_size);
+            memset(src_impl->entry + flag_offset, 0, flag_size);
+        }
+    }
+
+    return rk_ok;
+}
+
+rk_s32 kmpp_obj_update_entry(void *entry, KmppObj src)
+{
+    KmppObjImpl *src_impl = (KmppObjImpl *)src;
+    MppTrie trie = NULL;
+    MppTrieInfo *info = NULL;
+
+    if (kmpp_obj_check_f(src) || !entry) {
+        mpp_loge_f("obj %p update to entry %p failed invalid param\n", src, entry);
+        return rk_nok;
+    }
+
+    trie = src_impl->def->trie;
+
+    info = mpp_trie_get_info_first(trie);
+    do {
+        KmppEntry *e;
+
+        if (mpp_trie_info_is_self(info))
+            continue;
+
+        e = (KmppEntry *)mpp_trie_info_ctx(info);
+        if (e->tbl.flag_offset && ENTRY_TEST_FLAG(e, src_impl->entry)) {
+            rk_s32 offset = e->tbl.elem_offset;
+            rk_s32 size = e->tbl.elem_size;
+
+            obj_dbg_update("obj %s %p -> %p update %s\n", src_impl->name,
+                           src_impl, entry, mpp_trie_info_name(info));
+            memcpy(entry + offset, src_impl->entry + offset, size);
+        }
+    } while ((info = mpp_trie_get_info_next(trie, info)));
+
+    return rk_ok;
+}
+
+rk_s32 kmpp_obj_copy_entry(KmppObj dst, KmppObj src)
+{
+    KmppObjImpl *dst_impl = (KmppObjImpl *)dst;
+    KmppObjImpl *src_impl = (KmppObjImpl *)src;
+
+    if (kmpp_obj_check_f(src) || kmpp_obj_check_f(dst) || src_impl->def != dst_impl->def) {
+        mpp_loge_f("obj %p copy entry to %p failed invalid param\n", src, dst);
+        return rk_nok;
+    }
+
+    memcpy(dst_impl->entry, src_impl->entry, src_impl->def->entry_size);
+    {   /* NOTE: clear dst update flags */
+        rk_s32 offset = src_impl->def->flag_offset;
+        rk_s32 size = kmpp_obj_to_flags_size(src);
+
+        memset(dst_impl->entry + offset, 0, size);
+    }
+
+    return rk_ok;
+}
+
 static rk_s32 kmpp_obj_impl_run(rk_s32 (*run)(void *ctx), void *ctx)
 {
     return run(ctx);
@@ -1137,6 +1822,9 @@ rk_s32 kmpp_obj_udump_f(KmppObj obj, const char *caller)
 
     mpp_logi("dump obj %-12s - %p at %s:\n", name, impl, caller);
 
+    if (def->dump)
+        return def->dump(impl->entry);
+
     next = mpp_trie_get_info_first(trie);
     while (next) {
         KmppEntry *e;
@@ -1148,7 +1836,7 @@ rk_s32 kmpp_obj_udump_f(KmppObj obj, const char *caller)
         e = (KmppEntry *)mpp_trie_info_ctx(info);
         name = mpp_trie_info_name(info);
 
-        if (strstr(name, "__"))
+        if (mpp_trie_info_is_self(info))
             continue;
 
         idx = i++;
@@ -1325,9 +2013,96 @@ rk_s32 kmpp_obj_kdump_f(KmppObj obj, const char *caller)
 
     mpp_logi("dump obj %-12s - %p at %s by kernel\n", def->name, impl, caller);
 
-    ret = ioctl(p->fd, KMPP_SHM_IOC_DUMP, impl->shm);
+    ret = ioctl(p->obj.fd, KMPP_SHM_IOC_DUMP, impl->shm);
     if (ret)
         mpp_err("ioctl KMPP_SHM_IOC_DUMP failed ret %d\n", ret);
 
     return ret ? rk_nok : rk_ok;
+}
+
+rk_s32 kmpp_shm_get(KmppShm *shm, rk_s32 size, const char *caller)
+{
+    KmppObjs *p;
+    KmppObjIocArg *ioc;
+    rk_s32 ret = rk_nok;
+
+    if (!shm || !size) {
+        mpp_loge_f("invalid param shm %p size %d at %s\n", shm, size, caller);
+        return ret;
+    }
+
+    *shm = NULL;
+
+    /* kernel objdef path */
+    p = get_objs(caller);
+    if (!p)
+        return ret;
+
+    ioc = alloca(sizeof(KmppObjIocArg) + sizeof(KmppShmPtr));
+
+    ioc->count = 1;
+    ioc->flag = 0;
+    ioc->shm_req->shm_name = 0;
+    ioc->shm_req->shm_size = size;
+    ioc->shm_req->shm_flag = 0;
+
+    ret = ioctl(p->obj.fd, KMPP_SHM_IOC_GET_SHM, ioc);
+    if (ret) {
+        mpp_err("shm fd %d ioctl KMPP_SHM_IOC_GET_SHM failed at %s\n",
+                p->obj.fd, caller);
+        return ret;
+    }
+
+    *shm = U64_TO_PTR(ioc->obj_sptr[0].uaddr);
+
+    return *shm ? rk_ok : rk_nok;
+}
+
+rk_s32 kmpp_shm_put(KmppShm shm, const char *caller)
+{
+    KmppObjs *p = get_objs(caller);
+    rk_s32 ret = rk_nok;
+
+    if (!shm) {
+        mpp_loge_f("invalid param shm %p at %s\n", shm, caller);
+        return ret;
+    }
+
+    if (!p)
+        return ret;
+
+    if (p && p->obj.fd >= 0) {
+        KmppShmPtr *sptr = (KmppShmPtr *)shm;
+        KmppObjIocArg *ioc = alloca(sizeof(KmppObjIocArg) + sizeof(KmppShmPtr));
+
+        ioc->count = 1;
+        ioc->flag = 0;
+
+        ioc->count = 1;
+        ioc->flag = 0;
+        ioc->obj_sptr[0].uaddr = sptr->uaddr;
+        ioc->obj_sptr[0].kaddr = sptr->kaddr;
+
+        obj_dbg_flow("put shm %p entry [u:k] %llx:%llx at %s\n",
+                     sptr, sptr->uaddr, sptr->kaddr, caller);
+
+        ret = ioctl(p->obj.fd, KMPP_SHM_IOC_PUT_SHM, ioc);
+        if (ret)
+            mpp_err("ioctl KMPP_SHM_IOC_PUT_SHM failed ret %d at %s\n", ret, caller);
+    }
+
+    return ret;
+}
+
+void *kmpp_shm_to_entry(KmppShm shm, const char *caller)
+{
+    KmppObjs *p = get_objs(caller);
+    KmppShmPtr *sptr = (KmppShmPtr *)shm;
+
+    if (!shm) {
+        mpp_loge_f("invalid param shm %p at %s\n", shm, caller);
+        return NULL;
+    }
+
+    return sptr->uptr + p->entry_offset;
 }

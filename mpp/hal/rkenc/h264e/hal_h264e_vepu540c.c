@@ -32,7 +32,6 @@
 #include "hal_h264e_debug.h"
 #include "hal_bufs.h"
 #include "mpp_enc_hal.h"
-#include "vepu541_common.h"
 #include "vepu5xx_common.h"
 #include "vepu540c_common.h"
 
@@ -284,7 +283,7 @@ static MPP_RET hal_h264e_vepu540c_prepare(void *hal)
 
     hal_h264e_dbg_func("enter %p\n", hal);
 
-    if (prep->change & (MPP_ENC_PREP_CFG_CHANGE_INPUT | MPP_ENC_PREP_CFG_CHANGE_FORMAT)) {
+    if (prep->change_res) {
         RK_S32 i;
 
         // pre-alloc required buffers to reduce first frame delay
@@ -292,7 +291,7 @@ static MPP_RET hal_h264e_vepu540c_prepare(void *hal)
         for (i = 0; i < ctx->max_buf_cnt; i++)
             hal_bufs_get_buf(ctx->hw_recn, i);
 
-        prep->change = 0;
+        prep->change_res = 0;
     }
 
     hal_h264e_dbg_func("leave %p\n", hal);
@@ -350,7 +349,7 @@ static RK_U32 update_vepu540c_syntax(HalH264eVepu540cCtx *ctx, MppSyntax *syntax
 static MPP_RET hal_h264e_vepu540c_get_task(void *hal, HalEncTask *task)
 {
     HalH264eVepu540cCtx *ctx = (HalH264eVepu540cCtx *)hal;
-    MppEncH264HwCfg *hw_cfg = &ctx->cfg->codec.h264.hw_cfg;
+    MppEncH264HwCfg *hw_cfg = &ctx->cfg->h264.hw_cfg;
     RK_U32 updated = update_vepu540c_syntax(ctx, &task->syntax);
     EncFrmStatus *frm_status = &task->rc_task->frm;
     hal_h264e_dbg_func("enter %p\n", hal);
@@ -456,7 +455,7 @@ static MPP_RET setup_vepu540c_prep(HalVepu540cRegSet *regs, MppEncPrepCfg *prep)
 {
     VepuFmtCfg cfg;
     MppFrameFormat fmt = prep->format;
-    MPP_RET ret = vepu541_set_fmt(&cfg, fmt);
+    MPP_RET ret = vepu5xx_set_fmt(&cfg, fmt);
     RK_U32 hw_fmt = cfg.format;
     RK_S32 y_stride;
     RK_S32 c_stride;
@@ -482,10 +481,10 @@ static MPP_RET setup_vepu540c_prep(HalVepu540cRegSet *regs, MppEncPrepCfg *prep)
     y_stride = (MPP_FRAME_FMT_IS_FBC(fmt)) ? (MPP_ALIGN(prep->width, 16)) :
                (prep->hor_stride) ? (prep->hor_stride) : (prep->width);
 
-    c_stride = (hw_fmt == VEPU541_FMT_YUV422SP || hw_fmt == VEPU541_FMT_YUV420SP) ?
+    c_stride = (hw_fmt == VEPU5xx_FMT_YUV422SP || hw_fmt == VEPU5xx_FMT_YUV420SP) ?
                y_stride : y_stride / 2;
 
-    if (hw_fmt < VEPU541_FMT_NONE) {
+    if (hw_fmt < VEPU5xx_FMT_ARGB1555) {
         const VepuRgb2YuvCfg *cfg_coeffs = get_rgb2yuv_cfg(prep->range, prep->color);
 
         hal_h264e_dbg_flow("input color range %d colorspace %d", prep->range, prep->color);
@@ -1020,34 +1019,33 @@ static void setup_vepu540c_io_buf(HalVepu540cRegSet *regs, MppDev dev,
     } else if (MPP_FRAME_FMT_IS_YUV(fmt)) {
         VepuFmtCfg cfg;
 
-        vepu541_set_fmt(&cfg, fmt);
+        vepu5xx_set_fmt(&cfg, fmt);
         switch (cfg.format) {
-        case VEPU541_FMT_BGRA8888 :
-        case VEPU541_FMT_BGR888 :
-        case VEPU541_FMT_BGR565 : {
+        case VEPU5xx_FMT_BGRA8888 :
+        case VEPU5xx_FMT_BGR888 :
+        case VEPU5xx_FMT_BGR565 : {
             off_in[0] = 0;
             off_in[1] = 0;
         } break;
-        case VEPU541_FMT_YUV420SP :
-        case VEPU541_FMT_YUV422SP : {
+        case VEPU5xx_FMT_YUV420SP :
+        case VEPU5xx_FMT_YUV422SP : {
             off_in[0] = hor_stride * ver_stride;
             off_in[1] = hor_stride * ver_stride;
         } break;
-        case VEPU541_FMT_YUV422P : {
+        case VEPU5xx_FMT_YUV422P : {
             off_in[0] = hor_stride * ver_stride;
             off_in[1] = hor_stride * ver_stride * 3 / 2;
         } break;
-        case VEPU541_FMT_YUV420P : {
+        case VEPU5xx_FMT_YUV420P : {
             off_in[0] = hor_stride * ver_stride;
             off_in[1] = hor_stride * ver_stride * 5 / 4;
         } break;
-        case VEPU540_FMT_YUV400 :
-        case VEPU541_FMT_YUYV422 :
-        case VEPU541_FMT_UYVY422 : {
+        case VEPU5xx_FMT_YUV400 :
+        case VEPU5xx_FMT_YUYV422 :
+        case VEPU5xx_FMT_UYVY422 : {
             off_in[0] = 0;
             off_in[1] = 0;
         } break;
-        case VEPU541_FMT_NONE :
         default : {
             off_in[0] = 0;
             off_in[1] = 0;
@@ -1155,8 +1153,6 @@ static void setup_vepu540c_split(HalVepu540cRegSet *regs, MppEncCfgSet *cfg)
         mpp_log_f("invalide slice split mode %d\n", cfg->split.split_mode);
     } break;
     }
-
-    cfg->split.change = 0;
 
     hal_h264e_dbg_func("leave\n");
 }
@@ -1673,7 +1669,7 @@ static MPP_RET hal_h264e_vepu540c_wait(void *hal, HalEncTask *task)
         if (amend->enable) {
             amend->old_length = task->hw_length;
             amend->slice->is_multi_slice = (ctx->cfg->split.split_mode > 0);
-            h264e_vepu_stream_amend_proc(amend, &ctx->cfg->codec.h264.hw_cfg);
+            h264e_vepu_stream_amend_proc(amend, &ctx->cfg->h264.hw_cfg);
             task->hw_length = amend->new_length;
         } else if (amend->prefix) {
             /* check prefix value */

@@ -150,6 +150,7 @@ typedef struct AV1Context_t {
     HalDecTask *task;
     RK_S32 eos;       ///< current packet contains an EOS/EOB NAL
     RK_S64 pts;
+    RK_S64 dts;
     const MppDecHwCap *hw_info;
 } AV1Context;
 
@@ -172,8 +173,6 @@ RK_S32 av1d_split_frame(Av1CodecContext *ctx,
                         RK_U8 *data, RK_S32 size);
 
 MPP_RET av1d_get_frame_stream(Av1CodecContext *ctx, RK_U8 *buf, RK_S32 length);
-
-MPP_RET av1d_split_deinit(Av1CodecContext *ctx);
 
 MPP_RET av1d_split_init(Av1CodecContext *ctx);
 

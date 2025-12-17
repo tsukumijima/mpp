@@ -620,6 +620,7 @@ static MPP_RET set_output_frame(Av1CodecContext *ctx)
             fill_hdr_meta_to_frame(frame, MPP_VIDEO_CodingAV1);
     }
     mpp_frame_set_pts(frame, s->pts);
+    mpp_frame_set_dts(frame, s->dts);
     mpp_buf_slot_set_flag(s->slots, s->cur_frame.slot_index, SLOT_QUEUE_USE);
     mpp_buf_slot_enqueue(s->slots, s->cur_frame.slot_index, QUEUE_DISPLAY);
     s->cur_frame.ref->is_output = 1;
@@ -772,6 +773,7 @@ static MPP_RET get_current_frame(Av1CodecContext *ctx)
     mpp_frame_set_errinfo(frame->f, 0);
     mpp_frame_set_discard(frame->f, 0);
     mpp_frame_set_pts(frame->f, s->pts);
+    mpp_frame_set_dts(frame->f, s->dts);
 
     mpp_frame_set_color_trc(frame->f, ctx->color_trc);
     mpp_frame_set_color_primaries(frame->f, ctx->color_primaries);
@@ -924,6 +926,8 @@ MPP_RET av1d_parser_deinit(Av1CodecContext *ctx)
     mpp_frame_deinit(&s->cur_frame.f);
 
     mpp_av1_fragment_reset(&s->current_obu);
+    MPP_FREE(s->current_obu.units);
+    MPP_FREE(s->frame_header);
     MPP_FREE(s->seq_ref);
     MPP_FREE((s->hdr_dynamic_meta));
     MPP_FREE(ctx->priv_data);
@@ -950,6 +954,7 @@ MPP_RET av1d_parser_frame(Av1CodecContext *ctx, HalDecTask *task)
     size = (RK_S32)mpp_packet_get_length(ctx->pkt);
 
     s->pts = mpp_packet_get_pts(ctx->pkt);
+    s->dts = mpp_packet_get_dts(ctx->pkt);
 
     s->current_obu.data = data;
     s->current_obu.data_size = size;
@@ -1076,6 +1081,8 @@ MPP_RET av1d_parser_frame(Av1CodecContext *ctx, HalDecTask *task)
         }
 
         if (raw_tile_group && (s->tile_num == raw_tile_group->tg_end + 1)) {
+            RK_U32 j;
+
             av1d_parser2_syntax(ctx);
             task->syntax.data = (void*)&ctx->pic_params;
             task->syntax.number = 1;
@@ -1083,17 +1090,17 @@ MPP_RET av1d_parser_frame(Av1CodecContext *ctx, HalDecTask *task)
             task->output = s->cur_frame.slot_index;
             task->input_packet = ctx->pkt;
 
-            for (i = 0; i < AV1_REFS_PER_FRAME; i++) {
-                int8_t ref_idx = s->raw_frame_header->ref_frame_idx[i];
+            for (j = 0; j < AV1_REFS_PER_FRAME; j++) {
+                int8_t ref_idx = s->raw_frame_header->ref_frame_idx[j];
                 if (s->ref[ref_idx].slot_index < 0x7f) {
                     mpp_buf_slot_set_flag(s->slots, s->ref[ref_idx].slot_index, SLOT_HAL_INPUT);
                     MppFrame mframe = NULL;
-                    task->refer[i] = s->ref[ref_idx].slot_index;
-                    mpp_buf_slot_get_prop(s->slots, task->refer[i], SLOT_FRAME_PTR, &mframe);
+                    task->refer[j] = s->ref[ref_idx].slot_index;
+                    mpp_buf_slot_get_prop(s->slots, task->refer[j], SLOT_FRAME_PTR, &mframe);
                     if (mframe)
                         task->flags.ref_err |= mpp_frame_get_errinfo(mframe);
                 } else {
-                    task->refer[i] = -1;
+                    task->refer[j] = -1;
                 }
             }
             ret = update_reference_list(ctx);
@@ -1357,18 +1364,6 @@ MPP_RET av1d_get_frame_stream(Av1CodecContext *ctx, RK_U8 *buf, RK_S32 length)
     av1d_dbg_func("leave ctx %p\n", ctx);
     return ret;
 
-}
-
-MPP_RET av1d_split_deinit(Av1CodecContext *ctx)
-{
-    MPP_RET ret = MPP_OK;
-    (void)ctx;
-
-    av1d_dbg_func("enter ctx %p\n", ctx);
-
-    av1d_dbg_func("leave ctx %p\n", ctx);
-
-    return ret;
 }
 
 MPP_RET av1d_split_init(Av1CodecContext *ctx)

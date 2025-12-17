@@ -63,7 +63,7 @@ MPP_RET h264e_sps_update(H264eSps *sps, MppEncCfgSet *cfg)
     H264eVui *vui = &sps->vui;
     MppEncPrepCfg *prep = &cfg->prep;
     MppEncRcCfg *rc = &cfg->rc;
-    MppEncH264Cfg *h264 = &cfg->codec.h264;
+    MppEncH264Cfg *h264 = &cfg->h264;
     MppEncRefCfg ref = cfg->ref_cfg;
     MppEncCpbInfo *info = mpp_enc_ref_cfg_get_cpb_info(ref);
     MppFrameFormat fmt = prep->format;
@@ -215,7 +215,7 @@ MPP_RET h264e_sps_update(H264eSps *sps, MppEncCfgSet *cfg)
     }
 
     memset(vui, 0, sizeof(*vui));
-    vui->vui_present = 1;
+    vui->vui_en = h264->vui.vui_en;
     vui->timing_info_present = 1;
     vui->time_scale = rc->fps_out_num * 2;
     vui->num_units_in_tick = rc->fps_out_denom;
@@ -315,11 +315,11 @@ MPP_RET h264e_sps_to_packet(H264eSps *sps, MppPacket packet, RK_S32 *offset,
     /* log2_max_frame_num_minus4 */
     mpp_writer_put_ue(bit, sps->log2_max_frame_num_minus4);
     /* pic_order_cnt_type */
-    /* accodring usr cfg cfg->codec.h264.poc_type, hw may no support
+    /* accodring usr cfg cfg->h264.poc_type, hw may no support
        will convert after get stream
     */
-    mpp_writer_put_ue(bit, cfg->codec.h264.poc_type);
-    if (cfg->codec.h264.poc_type == 0) {
+    mpp_writer_put_ue(bit, cfg->h264.poc_type);
+    if (cfg->h264.poc_type == 0) {
         /* log2_max_pic_order_cnt_lsb_minus4 */
         mpp_writer_put_ue(bit, sps->log2_max_poc_lsb_minus4);
     }
@@ -352,8 +352,8 @@ MPP_RET h264e_sps_to_packet(H264eSps *sps, MppPacket packet, RK_S32 *offset,
     }
 
     /* vui_parameters_present_flag */
-    mpp_writer_put_bits(bit, sps->vui.vui_present, 1);
-    if (sps->vui.vui_present) {
+    mpp_writer_put_bits(bit, sps->vui.vui_en, 1);
+    if (sps->vui.vui_en) {
         H264eVui *vui = &sps->vui;
 
         /* aspect_ratio_info_present_flag */

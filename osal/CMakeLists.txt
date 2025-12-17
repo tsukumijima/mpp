@@ -19,7 +19,7 @@ set(MPP_ALLOCATOR
 )
 
 set(MPP_DRIVER
-    driver/mpp_server.cpp
+    driver/mpp_server.c
     driver/mpp_device.c
     driver/mpp_service.c
     driver/vcodec_service.c
@@ -27,25 +27,26 @@ set(MPP_DRIVER
 )
 
 add_library(osal OBJECT
-    mpp_soc.cpp
-    mpp_platform.cpp
-    mpp_runtime.cpp
-    mpp_allocator.cpp
-    mpp_mem_pool.cpp
-    mpp_callback.cpp
-    mpp_eventfd.cpp
-    mpp_dmabuf.cpp
-    mpp_thread.cpp
-    mpp_compat.cpp
-    mpp_common.cpp
-    mpp_queue.cpp
-    mpp_trace.cpp
-    mpp_lock.cpp
-    mpp_time.cpp
-    mpp_list.cpp
-    mpp_mem.cpp
-    mpp_env.cpp
-    mpp_log.cpp
+    mpp_singleton.c
+    mpp_soc.c
+    mpp_platform.c
+    mpp_runtime.c
+    mpp_allocator.c
+    mpp_mem_pool.c
+    mpp_callback.c
+    mpp_eventfd.c
+    mpp_dmabuf.c
+    mpp_thread.c
+    mpp_compat.c
+    mpp_common.c
+    mpp_queue.c
+    mpp_trace.c
+    mpp_lock.c
+    mpp_time.c
+    mpp_list.c
+    mpp_mem.c
+    mpp_env.c
+    mpp_log.c
     osal_2str.c
     # Those files have a compiler marco protection, so only target
     # OS will be built
@@ -54,10 +55,7 @@ add_library(osal OBJECT
     android/os_log.c
     linux/os_mem.c
     linux/os_env.c
-    linux/os_log.cpp
-    windows/os_mem.c
-    windows/os_env.c
-    windows/os_log.c
+    linux/os_log.c
     ${MPP_ALLOCATOR}
     ${MPP_DRIVER}
 )
@@ -79,9 +77,9 @@ if(ANDROID)
     # in Android pthread is in libc, also need liblog
     # Android 14 requires libc++ not libstdc++
     if("${ANDROID_STL}" STREQUAL "c++_static")
-        target_link_libraries(osal log m)
+        target_link_libraries(osal log ${LIBM})
     else()
-        target_link_libraries(osal log stdc++ m)
+        target_link_libraries(osal log stdc++ ${LIBM})
     endif()
 endif(ANDROID)
 

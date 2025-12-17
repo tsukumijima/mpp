@@ -132,4 +132,14 @@ typedef struct MppDecCfgSet_t {
     MppDecCbCfg         cb;
 } MppDecCfgSet;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+rk_s32 mpp_dec_cfg_set_default(void *entry, KmppObj obj, const char *caller);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* __MPP_DEC_CFG_H__ */

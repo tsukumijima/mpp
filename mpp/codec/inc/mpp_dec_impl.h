@@ -90,10 +90,11 @@ struct MppDecImpl_t {
     HalTaskGroup        vproc_tasks;
 
     // runtime configure set
-    MppDecCfgSet        cfg;
+    MppDecCfg           cfg_obj;
+    MppDecCfgSet        *cfg;
 
     /* control process */
-    MppMutexCond        *cmd_lock;
+    MppMutexCond        cmd_lock;
     RK_U32              cmd_send;
     RK_U32              cmd_recv;
     MpiCmd              cmd;

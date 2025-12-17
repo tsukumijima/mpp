@@ -1,17 +1,6 @@
+/* SPDX-License-Identifier: Apache-2.0 OR MIT */
 /*
- * Copyright 2015 Rockchip Electronics Co. LTD
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (c) 2015 Rockchip Electronics Co., Ltd.
  */
 
 #if defined(_WIN32)
@@ -145,6 +134,23 @@ static int dec_simple(MpiDecLoopData *data)
                     mpp_log_q(quiet, "%p decode_get_frame get info changed found\n", ctx);
                     mpp_log_q(quiet, "%p decoder require buffer w:h [%d:%d] stride [%d:%d] buf_size %d",
                               ctx, width, height, hor_stride, ver_stride, buf_size);
+
+                    if (MPP_FRAME_FMT_IS_FBC(cmd->format)) {
+                        MppFrame frm = NULL;
+
+                        mpp_frame_init(&frm);
+                        mpp_frame_set_width(frm, width);
+                        mpp_frame_set_height(frm, height);
+                        mpp_frame_set_fmt(frm, cmd->format);
+
+                        ret = mpi->control(ctx, MPP_DEC_SET_FRAME_INFO, frm);
+                        mpp_frame_deinit(&frm);
+
+                        if (ret) {
+                            mpp_err("set fbc frame info failed\n");
+                            break;
+                        }
+                    }
 
                     grp = dec_buf_mgr_setup(data->buf_mgr, buf_size, 24, cmd->buf_mode);
                     /* Set buffer to mpp decoder */
@@ -387,7 +393,6 @@ void *thread_decode(void *arg)
 
     t_e = mpp_time();
     data->elapsed_time = t_e - t_s;
-    data->frame_count = data->frame_count;
     data->frame_rate = (float)data->frame_count * 1000000 / data->elapsed_time;
     data->delay = data->first_frm - data->first_pkt;
 

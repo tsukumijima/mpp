@@ -14,7 +14,7 @@ macro(add_kmpp_base_test module)
     if(${test_tag})
         add_executable(${test_name} ${test_name}.c)
         target_link_libraries(${test_name} ${MPP_SHARED})
-        set_target_properties(${test_name} PROPERTIES FOLDER "osal/test")
+        set_target_properties(${test_name} PROPERTIES FOLDER "kmpp/test")
         add_test(NAME ${test_name} COMMAND ${test_name})
     endif()
 endmacro()
@@ -24,3 +24,9 @@ add_kmpp_base_test(kmpp_obj)
 
 # kmpp frame unit test
 add_kmpp_base_test(kmpp_frame)
+
+# kmpp buffer unit test
+add_kmpp_base_test(kmpp_buffer)
+
+# kmpp meta unit test
+add_kmpp_base_test(kmpp_meta)

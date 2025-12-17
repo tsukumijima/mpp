@@ -120,29 +120,8 @@ endif(UNIX)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     set(CLANG true)
 endif()
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
-    set(INTEL_CXX true)
-endif()
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     set(GCC true)
-endif()
-
-if(INTEL_CXX AND UNIX)
-    # treat icpc roughly like gcc
-    set(GCC true)
-    add_definitions(-Wall -Wextra -Wshadow)
-elseif(CLANG)
-    # treat clang roughly like gcc
-    set(GCC true)
-    add_definitions(-Wall -Wextra -Wshadow -ffast-math)
-elseif(CMAKE_COMPILER_IS_GNUCXX)
-    add_definitions(-Wall -Wextra -Wshadow -ffast-math)
-    check_cxx_compiler_flag(-Wno-narrowing GCC_HAS_NO_NARROWING)
-    check_cxx_compiler_flag(-mstackrealign GCC_HAS_STACK_REALIGN)
-    if (GCC_HAS_STACK_REALIGN)
-        add_definitions(-mstackrealign)
-    endif()
-    execute_process(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
 endif()
 
 if(GCC)
@@ -162,7 +141,16 @@ if(GCC)
         endif()
     endif()
 
-    if(NOT ${CMAKE_BUILD_TYPE} MATCHES "Release")
+    if(${CMAKE_BUILD_TYPE} MATCHES "Release")
+        # remove -g option for high version ndk
+        string(REGEX REPLACE "-g[^ ]*" "" TMP "${CMAKE_C_FLAGS}")
+        string(REGEX REPLACE "[ ]+" " " CMAKE_C_FLAGS "${TMP}")
+        string(REGEX REPLACE "-g[^ ]*" "" TMP "${CMAKE_CXX_FLAGS}")
+        string(REGEX REPLACE "[ ]+" " " CMAKE_CXX_FLAGS "${TMP}")
+
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -DNDEBUG")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -DNDEBUG")
+    else()
         add_definitions(-g)
     endif()
 
@@ -174,6 +162,17 @@ if(GCC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -fno-rtti")
     # save intermediate files
     # add_definitions(-save-temps)
+
+    # check library mvec
+    find_library(LMVEC_LIB mvec)
+    if(LMVEC_LIB)
+        set(LIBM mvec m)
+        set(MPP_PKGCONFIG_DEPENDENT_LIBS "-lmvec -lm")
+    else()
+        set(LIBM m)
+        set(MPP_PKGCONFIG_DEPENDENT_LIBS "-lm")
+        add_definitions(-fno-builtin-pow)
+    endif()
 
     # for libary linking
     set(BEGIN_WHOLE_ARCHIVE -Wl,--whole-archive)
@@ -330,17 +329,17 @@ include_directories(osal/inc)
 # OSAL is needed on all platform, do not need option
 add_subdirectory(osal)
 
-# ----------------------------------------------------------------------------
-#  utils for test case
-# ----------------------------------------------------------------------------
-add_subdirectory(utils)
-
 # Media Process Platform include
 include_directories(mpp/inc)
 include_directories(mpp/base/inc)
 # Kernel Media Process Platform include
 include_directories(kmpp/inc)
 include_directories(kmpp/base/inc)
+
+# ----------------------------------------------------------------------------
+#  utils for test case
+# ----------------------------------------------------------------------------
+add_subdirectory(utils)
 
 # ----------------------------------------------------------------------------
 #  Kernel Media Process Platform library

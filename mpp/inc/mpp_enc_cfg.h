@@ -1,25 +1,17 @@
+/* SPDX-License-Identifier: Apache-2.0 OR MIT */
 /*
- * Copyright 2015 Rockchip Electronics Co. LTD
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (c) 2015 Rockchip Electronics Co., Ltd.
  */
 
 #ifndef __MPP_ENC_CFG_H__
 #define __MPP_ENC_CFG_H__
 
+#include "rk_venc_cfg.h"
 #include "rk_venc_cmd.h"
 #include "rk_venc_ref.h"
-#include "rc_data.h"
+#include "mpp_rc_defs.h"
+
+#include "kmpp_obj.h"
 
 /*
  * MppEncCfgSet shows the relationship between different configuration
@@ -28,6 +20,9 @@
  *
  * For normal user rc and prep config are enough.
  */
+#define POS_TO_FLAG(p, pos) ((rk_u8*)(p) + ((rk_u32)(pos) & 0xffff))
+#define POS_TO_ELEM(p, pos) ((rk_u8*)(p) + ((rk_u32)(pos) >> 16))
+
 typedef struct MppEncCfgSet_t {
     MppEncBaseCfg       base;
 
@@ -39,7 +34,10 @@ typedef struct MppEncCfgSet_t {
     MppEncHwCfg         hw;
 
     // codec detail config
-    MppEncCodecCfg      codec;
+    MppEncH264Cfg       h264;
+    MppEncH265Cfg       h265;
+    MppEncJpegCfg       jpeg;
+    MppEncVp8Cfg        vp8;
 
     MppEncSliceSplit    split;
     MppEncRefCfg        ref_cfg;
@@ -58,5 +56,26 @@ typedef struct MppEncCfgSet_t {
     // quality fine tuning config
     MppEncFineTuneCfg   tune;
 } MppEncCfgSet;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+rk_u32 *mpp_enc_cfg_prep_change(MppEncCfgSet *cfg);
+rk_u32 *mpp_enc_cfg_rc_change(MppEncCfgSet *cfg);
+rk_u32 *mpp_enc_cfg_hw_change(MppEncCfgSet *cfg);
+rk_u32 *mpp_enc_cfg_tune_change(MppEncCfgSet *cfg);
+rk_u32 *mpp_enc_cfg_h264_change(MppEncCfgSet *cfg);
+rk_u32 *mpp_enc_cfg_h265_change(MppEncCfgSet *cfg);
+rk_u32 *mpp_enc_cfg_jpeg_change(MppEncCfgSet *cfg);
+rk_u32 *mpp_enc_cfg_vp8_change(MppEncCfgSet *cfg);
+
+#define KMPP_OBJ_NAME               mpp_enc_cfg
+#define KMPP_OBJ_INTF_TYPE          MppEncCfg
+#include "kmpp_obj_func.h"
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /*__MPP_ENC_CFG_H__*/

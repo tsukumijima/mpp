@@ -6,7 +6,6 @@
 #ifndef __KMPP_FRAME_IMPL_H__
 #define __KMPP_FRAME_IMPL_H__
 
-#include "kmpp_obj.h"
 #include "kmpp_frame.h"
 
 typedef struct KmppFrameImpl_t {
@@ -64,6 +63,7 @@ typedef struct KmppFrameImpl_t {
      */
     KmppShmPtr buffer;
     size_t buf_size;
+    RK_U32 buf_fd;
     /*
      * frame buffer compression (FBC) information
      *
@@ -81,6 +81,11 @@ typedef struct KmppFrameImpl_t {
     rk_u32 is_gray;
 
     KmppShmPtr meta;
+    KmppMeta self_meta;
 } KmppFrameImpl;
+
+typedef struct KmppFramePriv_t {
+    KmppMeta    meta;
+} KmppFramePriv;
 
 #endif /* __KMPP_FRAME_IMPL_H__ */

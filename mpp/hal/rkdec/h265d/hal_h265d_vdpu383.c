@@ -774,7 +774,7 @@ static RK_S32 hal_h265d_vdpu383_rps(void *dxva, void *rps_buf, void* sw_rps_buf,
     RK_S32 i = 0, j = 0;
     h265d_dxva2_picture_context_t *dxva_ctx = (h265d_dxva2_picture_context_t*)dxva;
 
-    if (!dxva_ctx->pp.ps_update_flag) {
+    if (!dxva_ctx->pp.rps_update_flag) {
         if (fast_mode) {
             memcpy(rps_buf, sw_rps_buf, fifo_len * sizeof(RK_U64));
         }
@@ -1097,7 +1097,7 @@ static MPP_RET hal_h265d_vdpu383_gen_regs(void *hal,  HalTaskInfo *syn)
     hw_regs->ctrl_regs.reg16.roi_error_ctu_cal_en = 0;
 
     hw_regs->ctrl_regs.reg20_cabac_error_en_lowbits = 0xffffffff;
-    hw_regs->ctrl_regs.reg21_cabac_error_en_highbits = 0x3ff3ffff;
+    hw_regs->ctrl_regs.reg21_cabac_error_en_highbits = 0x3ff3f9ff;
 
     hw_regs->ctrl_regs.reg13_core_timeout_threshold = 0xffff;
 

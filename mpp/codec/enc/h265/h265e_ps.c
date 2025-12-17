@@ -114,7 +114,7 @@ void init_raster2pelxy(RK_U32 maxCUSize, RK_U32 maxDepth, RK_U32 *raster2pelx, R
 MPP_RET h265e_set_vps(H265eCtx *ctx, H265eVps *vps)
 {
     RK_S32 i;
-    MppEncH265Cfg *codec = &ctx->cfg->codec.h265;
+    MppEncH265Cfg *codec = &ctx->cfg->h265;
     ProfileTierLevel *profileTierLevel = &vps->m_ptl.m_generalPTL;
     MppEncPrepCfg *prep = &ctx->cfg->prep;
     MppEncRefCfg ref_cfg = ctx->cfg->ref_cfg;
@@ -180,11 +180,11 @@ MPP_RET h265e_set_vps(H265eCtx *ctx, H265eVps *vps)
 MPP_RET h265e_set_sps(H265eCtx *ctx, H265eSps *sps, H265eVps *vps)
 {
     RK_U32 i, c;
-    MppEncH265Cfg *codec = &ctx->cfg->codec.h265;
+    MppEncH265Cfg *codec = &ctx->cfg->h265;
     MppEncPrepCfg *prep = &ctx->cfg->prep;
     MppEncRcCfg *rc = &ctx->cfg->rc;
     MppEncRefCfg ref_cfg = ctx->cfg->ref_cfg;
-    MppEncH265VuiCfg *vui = &codec->vui;
+    MppEncVuiCfg *vui = &codec->vui;
     MppFrameFormat fmt = prep->format;
     RK_S32 i_timebase_num = rc->fps_out_denom;
     RK_S32 i_timebase_den = rc->fps_out_num;
@@ -310,7 +310,7 @@ MPP_RET h265e_set_sps(H265eCtx *ctx, H265eSps *sps, H265eVps *vps)
     sps->m_pcmBitDepthChroma = 8;
 
     sps->m_bPCMFilterDisableFlag = 0;
-    sps->m_scalingListEnabledFlag = codec->trans_cfg.defalut_ScalingList_enable == 0 ? 0 : 1;
+    sps->m_scalingListEnabledFlag = codec->trans_cfg.scaling_list_mode == 0 ? 0 : 1;
 
     sps->m_bitsForPOC = 16;
     sps->m_numLongTermRefPicSPS = 0;
@@ -335,7 +335,7 @@ MPP_RET h265e_set_sps(H265eCtx *ctx, H265eSps *sps, H265eVps *vps)
     }
 
     sps->m_ptl = &vps->m_ptl;
-    sps->m_vuiParametersPresentFlag = 1;
+    sps->m_vuiParametersPresentFlag = vui->vui_en;
     if (sps->m_vuiParametersPresentFlag) {
         sps->vui.m_aspectRatioInfoPresentFlag = 0;
         sps->vui.m_aspectRatioIdc = 0;
@@ -401,7 +401,7 @@ MPP_RET h265e_set_sps(H265eCtx *ctx, H265eSps *sps, H265eVps *vps)
 
 MPP_RET h265e_set_pps(H265eCtx  *ctx, H265ePps *pps, H265eSps *sps)
 {
-    MppEncH265Cfg *codec = &ctx->cfg->codec.h265;
+    MppEncH265Cfg *codec = &ctx->cfg->h265;
 
     pps->m_bConstrainedIntraPred = codec->const_intra_pred;
     pps->m_PPSId = 0;
